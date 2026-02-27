@@ -1,5 +1,5 @@
 SHELL := /bin/bash
-DOCKER := /usr/bin/docker
+DOCKER := $(shell which docker)
 
 # Set YES=1 to skip confirmation prompts (e.g., make nuke YES=1)
 YES ?= 0

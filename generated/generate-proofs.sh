@@ -64,7 +64,7 @@ else
     echo "  Capability: claim/cache"
 
     "$MKDELEGATION" gen \
-        --issuer-private-key "$KEYS_DIR/indexer.pem" \
+        --issuer-private-key-file "$KEYS_DIR/indexer.pem" \
         --issuer-did-web "did:web:indexer" \
         --audience-did-key "$DELEGATOR_WEB_DID" \
         --capabilities "claim/cache" \
@@ -86,7 +86,7 @@ else
     echo "  Capability: egress/track"
 
     "$MKDELEGATION" gen \
-        --issuer-private-key "$KEYS_DIR/etracker.pem" \
+        --issuer-private-key-file "$KEYS_DIR/etracker.pem" \
         --issuer-did-web "did:web:etracker" \
         --audience-did-key "$DELEGATOR_WEB_DID" \
         --capabilities "egress/track" \
