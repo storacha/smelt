@@ -1,0 +1,35 @@
+# Signing Service System - PDP operation signing for Piri
+#
+# Signs blockchain transactions for Proof of Data Possession (PDP).
+# Used by: piri
+
+services:
+  signing-service:
+    image: forreststoracha/signer:dev
+    ports:
+      - "7446:7446"
+    volumes:
+      - ../../generated/keys/payer-key.hex:/keys/payer-key.hex:ro
+      - ../../generated/keys/signing-service.pem:/keys/signing-service.pem:ro
+      - ./config/signer.yaml:/signer.yaml:ro
+    command: [
+      "--host", "0.0.0.0",
+      "--port", "7446",
+      "--rpc-url", "ws://blockchain:8545",
+      "--service-contract-address", "0x0DCd1Bf9A1b36cE34237eEaFef220932846BCD82",
+      "--signing-key-path", "/keys/payer-key.hex",
+      "--service-key-file", "/keys/signing-service.pem",
+      "--service-did", "did:web:signing-service"
+    ]
+    depends_on:
+      blockchain:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:7446/healthcheck"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+    networks:
+      - storacha-network

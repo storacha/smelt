@@ -1,0 +1,20 @@
+# Guppy Configuration for Docker Deployment
+# Service URLs are configured via environment variables in docker-compose.yml:
+#   STORACHA_SERVICE_DID=did:web:upload%3A8080
+#   STORACHA_SERVICE_URL=http://upload:8080
+#   STORACHA_RECEIPTS_URL=http://upload:8080/receipt
+
+[repo]
+# Data directory is mounted as a Docker volume at /root/.storacha/guppy
+[network]
+upload_id = "did:web:upload"
+upload_url = "http://upload:80"
+receipts_url = "http://upload:80/receipt"
+indexer_id = "did:web:indexer"
+indexer_url = "http://indexer:80"
+authorized_retrievals = true
+
+[gateway]
+# Gateway settings (if running guppy gateway)
+port = 8181
+log_level = "info"

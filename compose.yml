@@ -1,0 +1,20 @@
+# Storacha Compose - Local Development Environment
+#
+# This is the root compose file that includes all system components.
+# Run with: docker compose up -d
+#
+# Individual systems can be run standalone from their directories.
+# Example: cd systems/blockchain && docker compose up -d
+#
+# Note: The storacha-network must be created before starting.
+# Run `make init` or `./scripts/init.sh` first.
+
+include:
+  - path: systems/blockchain/compose.yml
+  - path: systems/common/compose.yml
+  - path: systems/signing-service/compose.yml
+  - path: systems/delegator/compose.yml
+  - path: systems/indexing/compose.yml
+  - path: systems/piri/compose.yml
+  - path: systems/upload/compose.yml
+  - path: systems/guppy/compose.yml

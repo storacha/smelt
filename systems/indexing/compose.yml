@@ -1,0 +1,14 @@
+# Indexing System - Content discovery and claims caching
+#
+# This is the parent compose that includes IPNI and Indexer sub-packages.
+# Provides content discovery via IPNI and claims caching via Indexer.
+#
+# Sub-packages:
+#   - ipni/     - InterPlanetary Network Indexer (content discovery)
+#   - indexer/  - Storacha indexing service (claims caching)
+#
+# Used by: upload, piri, guppy
+
+include:
+  - path: ipni/compose.yml
+  - path: indexer/compose.yml

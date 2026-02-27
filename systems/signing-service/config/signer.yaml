@@ -1,0 +1,21 @@
+# Piri Signing Service Configuration for Local Docker Compose Network
+#
+# Note: service_key_file and service_did are provided via command line arguments
+# in the compose.yml file, using generated keys from generated/keys/signing-service.pem
+
+# Network binding configuration
+host: '0.0.0.0'
+port: 7446
+
+# Ethereum RPC endpoint (will be overridden by command line)
+rpc_url: 'ws://blockchain:8545'
+
+# FilecoinWarmStorageService contract address from anvil deployment
+service_contract_address: '0x0DCd1Bf9A1b36cE34237eEaFef220932846BCD82'
+
+# Signing key is provided via --signing-key-path from generated/keys/payer-key.hex
+# signing_key: loaded from /keys/payer-key.hex
+
+
+
+

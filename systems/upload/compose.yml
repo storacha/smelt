@@ -1,0 +1,52 @@
+# Upload System - Mock w3infra replacement
+#
+# Handles upload coordination, blob allocation, and UCAN processing.
+# Used by: guppy
+
+services:
+  upload:
+    build:
+      context: ../../mock-upload-service
+      dockerfile: Dockerfile
+    ports:
+      - "8080:80"
+    volumes:
+      - ../../generated/keys/upload.pem:/keys/upload.pem:ro
+    environment:
+      # Listen on port 80 internally for did:web resolution (default port)
+      - PORT=80
+      - HOST=0.0.0.0
+      # Piri provider info is loaded from DynamoDB (delegator-provider-info table)
+      # where piri registers during init. No hardcoded PIRI_DID/PIRI_ENDPOINT needed.
+      # Indexer endpoint
+      - INDEXER_ENDPOINT=http://indexer:80
+      - INDEXER_DID=did:web:indexer
+      - LOG_LEVEL=info
+      # Service identity from PEM key file wrapped with did:web
+      - KEY_FILE=/keys/upload.pem
+      - SERVICE_DID=did:web:upload
+      # DynamoDB for state persistence
+      - DYNAMODB_ENDPOINT=http://dynamodb-local:8000
+      - DYNAMODB_REGION=us-west-1
+      - DYNAMODB_PROVIDER_TABLE=delegator-provider-info
+      # Upload service state tables (auto-created on startup)
+      - DYNAMODB_ALLOCATIONS_TABLE=upload-allocations
+      - DYNAMODB_RECEIPTS_TABLE=upload-receipts
+      - DYNAMODB_AUTH_REQUESTS_TABLE=upload-auth-requests
+      - DYNAMODB_PROVISIONINGS_TABLE=upload-provisionings
+      - DYNAMODB_UPLOADS_TABLE=upload-uploads
+    depends_on:
+      indexer:
+        condition: service_healthy
+      dynamodb-local:
+        condition: service_healthy
+      piri:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:80/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - storacha-network

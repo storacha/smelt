@@ -1,0 +1,29 @@
+# Piri Base Configuration for Local Development
+# Contract addresses from systems/blockchain/state/deployed-addresses.json
+
+[pdp]
+chain_id = "31337"
+payer_address = "0x70997970C51812dc3A010C7d01b50e0d17dc79C8"
+
+[pdp.signing_service]
+did = "did:web:signing-service"
+url = "http://signing-service:7446"
+
+[pdp.contracts]
+verifier = "0xa513E6E4b8f2a923D98304ec87F64353C4D5C853"
+provider_registry = "0x610178dA211FEF7D417bC0e6FeD39F05609AD788"
+service = "0x0DCd1Bf9A1b36cE34237eEaFef220932846BCD82"
+service_view = "0x9A676e781A523b5d0C0e43731313A708CB607508"
+payments = "0x2279B7A0a67DB372996a5FaB50D91eAA73d2eBe6"
+usdfc_token = "0xCf7Ed3AccA5a467e9e704C703E8D87F634fB0Fc9"
+
+[ucan.services.indexer]
+did = "did:web:indexer"
+url = "http://indexer:80/claims"
+
+[ucan.services.upload]
+did = "did:web:upload"
+url = "http://upload:80"
+
+[ucan.services.publisher]
+ipni_announce_urls = ["http://ipni:3003/announce"]

@@ -1,0 +1,30 @@
+# Delegator System - UCAN delegation service (registrar)
+#
+# Issues UCAN delegations to storage providers.
+# Used by: piri
+
+services:
+  delegator:
+    image: forreststoracha/delegator:dev
+    ports:
+      # Internal port 80 for did:web resolution
+      - "8081:80"
+    command: ["serve", "--host", "0.0.0.0", "--port", "80"]
+    volumes:
+      - ../../generated/keys/delegator.pem:/keys/delegator.pem:ro
+      - ../../generated/proofs:/proofs:ro
+      - ./config/delegator.yaml:/.delegator.yaml:ro
+    depends_on:
+      dynamodb-local:
+        condition: service_healthy
+      blockchain:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:80/healthcheck"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+    networks:
+      - storacha-network

@@ -1,0 +1,50 @@
+# Indexer System - Storacha's content claims caching layer
+#
+# Provides caching and query interface for content claims.
+# Depends on IPNI for content discovery and Redis for caching.
+
+services:
+  # Redis - Cache backend for indexing service
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - storacha-network
+
+  # Indexing Service - Storacha's caching layer for content claims
+  indexer:
+    image: forreststoracha/indexer:dev
+    ports:
+      - "9000:80"  # Host 9000 -> container 80
+    volumes:
+      - ../../../generated/keys:/keys:ro
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - IPNI_ENDPOINT=http://ipni:3000
+      # HTTP-based did:web resolution for local dev (fetches /.well-known/did.json from each service)
+      - RESOLVE_DID_WEB=did:web:delegator,did:web:piri,did:web:upload
+      - INSECURE_DID_RESOLUTION=true
+    # Listen on port 80 so did:web:indexer resolution works (did:web defaults to port 80)
+    # --public-url tells the indexer where it can be reached for claim fetching
+    command: ["server", "start", "--port", "80", "--redis-url", "redis:6379", "--ipni-endpoint", "http://ipni:3000", "--key-file", "/keys/indexer.pem", "--did", "did:web:indexer", "--public-url", "http://indexer:80"]
+    depends_on:
+      redis:
+        condition: service_healthy
+      ipni:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:80/"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    restart: unless-stopped
+    networks:
+      - storacha-network

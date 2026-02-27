@@ -1,0 +1,29 @@
+# Blockchain System - Local Filecoin chain (Anvil-based)
+#
+# Provides the local blockchain for smart contract interactions.
+# Used by: signing-service, delegator, piri
+
+services:
+  blockchain:
+    image: ghcr.io/storacha/filecoin-localdev:b66c8bd
+    ports:
+      - "8545:8545"
+    volumes:
+      # Pre-dumped state files for fast startup (~3s instead of ~30s)
+      - ./state/anvil-state.json:/app/anvil-state.json:ro
+      - ./state/deployed-addresses.json:/deployed-addresses.json:ro
+    environment:
+      - ANVIL_BLOCK_TIME=3
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8545", "-X", "POST", "-H", "Content-Type: application/json", "-d", '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    restart: unless-stopped
+    networks:
+      - storacha-network
+
+networks:
+  storacha-network:
+    external: true

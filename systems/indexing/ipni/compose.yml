@@ -1,0 +1,33 @@
+# IPNI System - InterPlanetary Network Indexer
+#
+# Content discovery indexer using storetheindex.
+# Provides content routing for the Storacha network.
+
+services:
+  # IPNI (storetheindex) - Content discovery indexer
+  ipni:
+    image: forreststoracha/storetheindex:dev
+    ports:
+      - "3000:3000"   # Finder (queries)
+      - "3002:3002"   # Admin
+      - "3003:3003"   # Ingest (advertisement sync)
+    volumes:
+      - ipni-data:/root/.storetheindex
+      - ./entrypoint.sh:/entrypoint.sh:ro
+    entrypoint: ["/entrypoint.sh"]
+    environment:
+      # Disable OTEL telemetry export
+      - OTEL_TRACES_ENABLED=false
+      - OTEL_METRICS_ENABLED=false
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/storetheindex", "admin", "status"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+    networks:
+      - storacha-network
+
+volumes:
+  ipni-data:

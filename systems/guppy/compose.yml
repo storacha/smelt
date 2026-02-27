@@ -1,0 +1,25 @@
+# Guppy System - CLI client for uploads
+#
+# Interactive CLI for uploading and retrieving content.
+
+services:
+  guppy:
+    image: forreststoracha/guppy:dev
+    volumes:
+      - ./config/guppy-config.toml:/root/.config/guppy/config.toml:ro
+      - guppy-data:/root/.storacha/guppy
+    depends_on:
+      upload:
+        condition: service_healthy
+      piri:
+        condition: service_healthy
+    stdin_open: true
+    tty: true
+    # Keep container alive for interactive use (exec into it with: make guppy)
+    entrypoint: ["sleep", "infinity"]
+    restart: unless-stopped
+    networks:
+      - storacha-network
+
+volumes:
+  guppy-data:

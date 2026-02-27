@@ -1,0 +1,49 @@
+# Piri System - Storage node with PDP proofs
+#
+# The storage provider that stores and serves content.
+# Uses two-step init process:
+#   1. piri init (registers with blockchain and delegator, generates config)
+#   2. piri serve (starts server using generated config)
+
+services:
+  piri:
+    image: forreststoracha/piri:dev
+    ports:
+      - "3333:3000"
+    volumes:
+      - piri-data:/data/piri
+      - ../../generated/keys:/keys:ro
+      - ./entrypoint.sh:/entrypoint.sh:ro
+      - ./register-did.sh:/scripts/register-did.sh:ro
+      - ./config/piri-base-config.toml:/config/piri-base-config.toml:ro
+    entrypoint: ["/entrypoint.sh"]
+    environment:
+      # DynamoDB endpoint for registering with delegator allow list
+      - DYNAMODB_ENDPOINT=http://dynamodb-local:8000
+      - DYNAMODB_TABLE=delegator-allow-list
+      - OPERATOR_EMAIL=local@test.com
+      # Disable analytics/telemetry for local development
+      - PIRI_DISABLE_ANALYTICS=1
+    depends_on:
+      blockchain:
+        condition: service_healthy
+      indexer:
+        condition: service_healthy
+      signing-service:
+        condition: service_healthy
+      delegator:
+        condition: service_healthy
+      dynamodb-local:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:3000/"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 180s
+    restart: unless-stopped
+    networks:
+      - storacha-network
+
+volumes:
+  piri-data:

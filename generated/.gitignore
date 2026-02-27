@@ -1,0 +1,3 @@
+# Ignore generated keys (they are created at runtime by generate-keys.sh)
+keys/
+proofs/
