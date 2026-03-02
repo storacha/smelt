@@ -1,0 +1,26 @@
+# Upload service configuration for Docker Compose environment
+
+server:
+  host: "0.0.0.0"
+  port: 80  # Use port 80 for did:web resolution
+
+identity:
+  key_file: "/keys/upload.pem"
+  service_did: "did:web:upload"
+
+indexer:
+  endpoint: "http://indexer:80"
+  did: "did:web:indexer"
+
+dynamodb:
+  endpoint: "http://dynamodb-local:8000"
+  region: "us-west-1"
+  provider_table: "delegator-provider-info"
+  allocations_table: "upload-allocations"
+  receipts_table: "upload-receipts"
+  auth_requests_table: "upload-auth-requests"
+  provisionings_table: "upload-provisionings"
+  uploads_table: "upload-uploads"
+
+log:
+  level: "info"
