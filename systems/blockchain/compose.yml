@@ -5,7 +5,7 @@
 
 services:
   blockchain:
-    image: ghcr.io/storacha/filecoin-localdev:b66c8bd
+    image: ${BLOCKCHAIN_IMAGE:-ghcr.io/storacha/filecoin-localdev:b66c8bd}
     ports:
       - "8545:8545"
     volumes:
@@ -23,7 +23,3 @@ services:
     restart: unless-stopped
     networks:
       - storacha-network
-
-networks:
-  storacha-network:
-    external: true

@@ -18,3 +18,7 @@ include:
   - path: systems/piri/compose.yml
   - path: systems/upload/compose.yml
   - path: systems/guppy/compose.yml
+
+networks:
+  storacha-network:
+    external: true

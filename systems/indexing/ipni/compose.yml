@@ -6,19 +6,22 @@
 services:
   # IPNI (storetheindex) - Content discovery indexer
   ipni:
-    image: forreststoracha/storetheindex:dev
+    image: ${IPNI_IMAGE:-forreststoracha/storetheindex:dev}
     ports:
       - "3000:3000"   # Finder (queries)
+      # Note: 3001 (Ingest HTTP) not exposed to host - accessed via internal network
       - "3002:3002"   # Admin
-      - "3003:3003"   # Ingest (advertisement sync)
+      - "3003:3003"   # P2P (libp2p advertisement sync)
     volumes:
       - ipni-data:/root/.storetheindex
       - ./entrypoint.sh:/entrypoint.sh:ro
     entrypoint: ["/entrypoint.sh"]
     environment:
-      # Disable OTEL telemetry export
-      - OTEL_TRACES_ENABLED=false
-      - OTEL_METRICS_ENABLED=false
+      # OTEL telemetry (enabled when using 'make up-telemetry')
+      - OTEL_TRACES_ENABLED=${OTEL_ENABLED:-false}
+      - OTEL_METRICS_ENABLED=${OTEL_ENABLED:-false}
+      - OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_ENDPOINT:-}
+      - OTEL_SERVICE_NAME=ipni
     healthcheck:
       test: ["CMD", "/usr/local/bin/storetheindex", "admin", "status"]
       interval: 10s

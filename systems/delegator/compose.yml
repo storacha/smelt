@@ -5,7 +5,7 @@
 
 services:
   delegator:
-    image: forreststoracha/delegator:dev
+    image: ${DELEGATOR_IMAGE:-forreststoracha/delegator:dev}
     ports:
       # Internal port 80 for did:web resolution
       - "8081:80"

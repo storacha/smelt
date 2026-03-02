@@ -4,7 +4,7 @@
 
 services:
   guppy:
-    image: forreststoracha/guppy:dev
+    image: ${GUPPY_IMAGE:-forreststoracha/guppy:dev}
     volumes:
       - ./config/guppy-config.toml:/root/.config/guppy/config.toml:ro
       - guppy-data:/root/.storacha/guppy

@@ -6,6 +6,7 @@ set -e
 KEY_FILE="/keys/piri.pem"
 WALLET_FILE="/keys/owner-wallet.hex"
 BASE_CONFIG="/config/piri-base-config.toml"
+OVERRIDES_CONFIG="/config/piri-overrides.toml"
 DATA_DIR="/data/piri"
 TEMP_DIR="/tmp/piri"
 CONFIG_FILE="${DATA_DIR}/piri-config.toml"
@@ -57,8 +58,19 @@ else
         --host="$HOST" \
         --operator-email="$OPERATOR_EMAIL"
 
-    [ -f "piri-config.toml" ] && mv piri-config.toml "$CONFIG_FILE"
+    # Config created as piri-config.toml in DATA_DIR (current dir)
     echo "  Init complete"
+fi
+
+# Append overrides config if present and not already applied
+if [ -f "$OVERRIDES_CONFIG" ]; then
+    # Check if overrides already appended (look for marker comment)
+    if ! grep -q "# --- piri-overrides.toml ---" "$CONFIG_FILE" 2>/dev/null; then
+        echo "  Applying config overrides..."
+        echo "" >> "$CONFIG_FILE"
+        echo "# --- piri-overrides.toml ---" >> "$CONFIG_FILE"
+        cat "$OVERRIDES_CONFIG" >> "$CONFIG_FILE"
+    fi
 fi
 
 # Step 4: Start piri server
