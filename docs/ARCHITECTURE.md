@@ -179,11 +179,11 @@ flowchart TB
 
 ---
 
-### 5. Upload Service (Mock) - Port 8080
+### 5. Upload Service (Sprue) - Port 8080
 
 **Role**: Simplified replacement for w3infra's upload-api. Orchestrates the upload workflow.
 
-**Build context**: `./mock-upload-service`
+**Build context**: `../sprue` (external repository)
 
 **Identity**: `did:key:z6MkugC4LAhCir6Pv6S6p63G1c6Ju4sTwq5xt6Fxn1a1MkvE` (derived from PRIVATE_KEY)
 

@@ -20,7 +20,7 @@ services:
 
   # Indexing Service - Storacha's caching layer for content claims
   indexer:
-    image: forreststoracha/indexer:dev
+    image: ${INDEXER_IMAGE:-forreststoracha/indexer:dev}
     ports:
       - "9000:80"  # Host 9000 -> container 80
     volumes:

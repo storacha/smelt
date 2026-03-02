@@ -26,4 +26,4 @@ did = "did:web:upload"
 url = "http://upload:80"
 
 [ucan.services.publisher]
-ipni_announce_urls = ["http://ipni:3003/announce"]
+ipni_announce_urls = ["http://ipni:3001/announce"]

@@ -5,7 +5,7 @@
 
 services:
   signing-service:
-    image: forreststoracha/signer:dev
+    image: ${SIGNER_IMAGE:-forreststoracha/signer:dev}
     ports:
       - "7446:7446"
     volumes:
