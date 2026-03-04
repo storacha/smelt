@@ -1,6 +1,6 @@
-# Smelt
+# Smelt ⚗️
 
-_The Smelter_ A complete Storacha network running on your laptop. Upload your first file in under five minutes.
+_The Smelter_: A complete Storacha network running on your laptop. Upload your first file in under five minutes.
 
 Smelt is a Docker Compose environment that runs every service in the Storacha distributed storage network locally. It exists so you can test changes, debug integrations, and develop features without deploying anything to production—or waiting for anyone else.
 
