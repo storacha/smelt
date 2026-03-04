@@ -5,7 +5,7 @@
 
 services:
   blockchain:
-    image: ${BLOCKCHAIN_IMAGE:-ghcr.io/storacha/filecoin-localdev:b66c8bd}
+    image: ${BLOCKCHAIN_IMAGE:-ghcr.io/storacha/filecoin-localdev:f2acf8a}
     ports:
       - "8545:8545"
     volumes:

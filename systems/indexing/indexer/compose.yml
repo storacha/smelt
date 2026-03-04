@@ -41,7 +41,7 @@ services:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:80/"]
-      interval: 10s
+      interval: 5s
       timeout: 5s
       retries: 10
       start_period: 30s
