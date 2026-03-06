@@ -59,7 +59,7 @@ You now have content stored on your local Storacha network, complete with blockc
 | delegator | 8081 | UCAN delegation service |
 | ipni | 3000, 3002, 3003 | Content discovery indexer |
 | indexer | 9000 | Content claims cache |
-| piri | 3333 | Storage node with PDP proofs |
+| piri | 4000 | Storage node with PDP proofs |
 | upload | 8080 | Upload orchestration service |
 | guppy | — | CLI client for uploads (no exposed port) |
 
@@ -73,7 +73,7 @@ flowchart TB
 
     subgraph Services
         upload["upload :8080"]
-        piri["piri :3333"]
+        piri["piri :4000"]
         indexer["indexer :9000"]
     end
 

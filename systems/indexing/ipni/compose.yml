@@ -2,21 +2,50 @@
 #
 # Content discovery indexer using storetheindex.
 # Provides content routing for the Storacha network.
+#
+# Note: The storetheindex image is distroless with debug variant (has busybox shell).
 
 services:
+  # IPNI Init - One-time initialization
+  # Uses the same distroless debug image with busybox shell
+  # Runs as root to initialize the data directory, then chowns to nonroot (65532)
+  ipni-init:
+    image: ${IPNI_IMAGE:-ghcr.io/storacha/storetheindex:main}
+    user: "0:0"
+    entrypoint: ["/busybox/sh", "-c"]
+    command:
+      - |
+        if [ -f /data/config ]; then
+          echo "IPNI config exists, skipping init"
+          exit 0
+        fi
+        echo "Initializing IPNI..."
+        /usr/local/bin/storetheindex init
+        chown -R 65532:65532 /data
+    environment:
+      - STORETHEINDEX_PATH=/data
+    volumes:
+      - ipni-data:/data
+    restart: "no"
+    networks:
+      - storacha-network
+
   # IPNI (storetheindex) - Content discovery indexer
   ipni:
-    image: ${IPNI_IMAGE:-forreststoracha/storetheindex:dev}
+    image: ${IPNI_IMAGE:-ghcr.io/storacha/storetheindex:main}
+    depends_on:
+      ipni-init:
+        condition: service_completed_successfully
     ports:
       - "3000:3000"   # Finder (queries)
       # Note: 3001 (Ingest HTTP) not exposed to host - accessed via internal network
       - "3002:3002"   # Admin
       - "3003:3003"   # P2P (libp2p advertisement sync)
     volumes:
-      - ipni-data:/root/.storetheindex
-      - ./entrypoint.sh:/entrypoint.sh:ro
-    entrypoint: ["/entrypoint.sh"]
+      - ipni-data:/data
+    entrypoint: ["/usr/local/bin/storetheindex", "daemon"]
     environment:
+      - STORETHEINDEX_PATH=/data
       # OTEL telemetry (enabled when using 'make up-telemetry')
       - OTEL_TRACES_ENABLED=${OTEL_ENABLED:-false}
       - OTEL_METRICS_ENABLED=${OTEL_ENABLED:-false}

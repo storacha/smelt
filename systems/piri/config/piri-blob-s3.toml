@@ -1,0 +1,11 @@
+# S3-compatible blob storage (MinIO)
+# Merged into base-config when PIRI_BLOB_BACKEND=s3
+
+[repo.s3]
+endpoint = "piri-minio:9000"
+bucket_prefix = "piri-"
+insecure = true
+
+[repo.s3.credentials]
+access_key_id = "minioadmin"
+secret_access_key = "minioadmin"

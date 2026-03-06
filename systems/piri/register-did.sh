@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 # Register a DID with the delegator allow list (DynamoDB)
 #
 # Usage: ./register-did.sh <did>
@@ -26,27 +26,23 @@ echo "  Endpoint: $DYNAMODB_ENDPOINT"
 echo "  Table: $DYNAMODB_TABLE"
 
 DATE=$(date -u +%Y%m%dT%H%M%SZ)
+ADDED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 
-HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X POST \
-  -H "Content-Type: application/x-amz-json-1.0" \
-  -H "X-Amz-Target: DynamoDB_20120810.PutItem" \
-  -H "Authorization: AWS4-HMAC-SHA256 Credential=dummy/${DATE:0:8}/us-west-1/dynamodb/aws4_request, SignedHeaders=content-type;host;x-amz-date;x-amz-target, Signature=dummy" \
-  -H "X-Amz-Date: $DATE" \
-  -d '{
-    "TableName": "'"$DYNAMODB_TABLE"'",
-    "Item": {
-      "did": {"S": "'"$DID"'"},
-      "added_by": {"S": "register-did.sh"},
-      "added_at": {"S": "'"$(date -u +%Y-%m-%dT%H:%M:%SZ)"'"},
-      "notes": {"S": "local dev"}
-    }
-  }' \
-  "$DYNAMODB_ENDPOINT")
+# Build the JSON body
+BODY="{\"TableName\": \"${DYNAMODB_TABLE}\", \"Item\": {\"did\": {\"S\": \"${DID}\"}, \"added_by\": {\"S\": \"register-did.sh\"}, \"added_at\": {\"S\": \"${ADDED_AT}\"}, \"notes\": {\"S\": \"local dev\"}}}"
 
-if [ "$HTTP_STATUS" = "200" ]; then
+# Use wget instead of curl (Alpine has BusyBox wget, not curl)
+# Check exit code: 0 = success (2xx response), non-zero = failure
+if wget -q -O /dev/null \
+  --header="Content-Type: application/x-amz-json-1.0" \
+  --header="X-Amz-Target: DynamoDB_20120810.PutItem" \
+  --header="Authorization: AWS4-HMAC-SHA256 Credential=dummy/${DATE:0:8}/us-west-1/dynamodb/aws4_request, SignedHeaders=content-type;host;x-amz-date;x-amz-target, Signature=dummy" \
+  --header="X-Amz-Date: $DATE" \
+  --post-data="$BODY" \
+  "$DYNAMODB_ENDPOINT" 2>/dev/null; then
     echo "DID registered successfully"
     exit 0
 else
-    echo "Warning: Registration returned HTTP $HTTP_STATUS"
+    echo "Warning: Registration failed"
     exit 1
 fi
