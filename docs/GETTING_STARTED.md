@@ -244,7 +244,7 @@ dynamodb-local          Up 2 minutes (healthy)   0.0.0.0:8000->8000/tcp
 guppy                   Up About a minute
 indexer                 Up 2 minutes (healthy)   0.0.0.0:9000->80/tcp
 ipni                    Up 2 minutes (healthy)   0.0.0.0:3000-3003->3000-3003/tcp
-piri                    Up 2 minutes (healthy)   0.0.0.0:3333->3000/tcp
+piri                    Up 2 minutes (healthy)   0.0.0.0:4000->3000/tcp
 redis                   Up 2 minutes (healthy)   0.0.0.0:6379->6379/tcp
 signing-service         Up 2 minutes (healthy)   0.0.0.0:7446->7446/tcp
 upload                  Up About a minute (healthy)   0.0.0.0:8080->80/tcp
@@ -426,7 +426,7 @@ curl http://localhost:9000/
 
 **Piri (health check)**
 ```bash
-curl http://localhost:3333/
+curl http://localhost:4000/
 # Returns empty response with 200 OK if healthy
 ```
 
@@ -712,5 +712,5 @@ For deep protocol understanding:
 | Delegator | 8081 | `curl localhost:8081/healthcheck` |
 | IPNI | 3000 | `curl localhost:3000/health` |
 | Indexer | 9000 | `curl localhost:9000/` |
-| Piri | 3333 | `curl localhost:3333/` |
+| Piri | 4000 | `curl localhost:4000/` |
 | Upload | 8080 | `curl localhost:8080/health` |

@@ -5,7 +5,8 @@
 
 services:
   delegator:
-    image: ${DELEGATOR_IMAGE:-forreststoracha/delegator:dev}
+    image: ${DELEGATOR_IMAGE:-ghcr.io/storacha/delegator:main}
+    user: "0:0"  # Run as root for volume permissions (key files are 600)
     ports:
       # Internal port 80 for did:web resolution
       - "8081:80"
@@ -20,7 +21,7 @@ services:
       blockchain:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-sf", "http://localhost:80/healthcheck"]
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:80/healthcheck"]
       interval: 10s
       timeout: 5s
       retries: 5

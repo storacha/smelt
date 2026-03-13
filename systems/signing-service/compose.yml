@@ -5,7 +5,8 @@
 
 services:
   signing-service:
-    image: ${SIGNER_IMAGE:-forreststoracha/signer:dev}
+    image: ${SIGNER_IMAGE:-ghcr.io/storacha/piri-signing-service:main}
+    user: root
     ports:
       - "7446:7446"
     volumes:
@@ -25,7 +26,7 @@ services:
       blockchain:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-sf", "http://localhost:7446/healthcheck"]
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:7446/healthcheck"]
       interval: 10s
       timeout: 5s
       retries: 5

@@ -20,7 +20,8 @@ services:
 
   # Indexing Service - Storacha's caching layer for content claims
   indexer:
-    image: ${INDEXER_IMAGE:-forreststoracha/indexer:dev}
+    image: ${INDEXER_IMAGE:-ghcr.io/storacha/indexing-service:main}
+    user: "0:0"  # Run as root for volume permissions (key files are 600)
     ports:
       - "9000:80"  # Host 9000 -> container 80
     volumes:
@@ -40,7 +41,7 @@ services:
       ipni:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-sf", "http://localhost:80/"]
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:80/"]
       interval: 5s
       timeout: 5s
       retries: 10

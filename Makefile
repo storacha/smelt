@@ -25,6 +25,7 @@ help:
 	@echo "  make fresh     Nuke + rebuild + start (DESTROYS EVERYTHING, starts fresh)"
 	@echo ""
 	@echo "Development:"
+	@echo "  make pull      Pull latest pre-built images"
 	@echo "  make build     Build all Docker images"
 	@echo "  make regen     Regenerate keys and proofs (requires restart)"
 	@echo "  make logs      Follow all service logs"
@@ -32,7 +33,6 @@ help:
 	@echo "  make guppy     Open shell in guppy container"
 	@echo ""
 	@echo "Destructive commands (clean, nuke, fresh) require confirmation."
-	@echo "Skip with: make <command> YES=1"
 	@echo ""
 
 # Initialize the environment (generate keys, proofs, create network)
@@ -134,4 +134,4 @@ shell-guppy:
 
 # Shell into piri container
 shell-piri:
-	$(DOCKER) compose exec piri bash
+	$(DOCKER) compose exec piri sh

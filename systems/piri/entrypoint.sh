@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 # Piri Entrypoint - Initialize and start piri storage node
 set -e
 
@@ -60,6 +60,20 @@ else
 
     # Config created as piri-config.toml in DATA_DIR (current dir)
     echo "  Init complete"
+
+    # Clean up merged config
+    rm -f "$MERGED_BASE_CONFIG"
+fi
+
+# Append overrides config if present and not already applied
+if [ -f "$OVERRIDES_CONFIG" ]; then
+    # Check if overrides already appended (look for marker comment)
+    if ! grep -q "# --- piri-overrides.toml ---" "$CONFIG_FILE" 2>/dev/null; then
+        echo "  Applying config overrides..."
+        echo "" >> "$CONFIG_FILE"
+        echo "# --- piri-overrides.toml ---" >> "$CONFIG_FILE"
+        cat "$OVERRIDES_CONFIG" >> "$CONFIG_FILE"
+    fi
 fi
 
 # Append overrides config if present and not already applied

@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 # IPNI Entrypoint - Initialize and start storetheindex
 set -e
 

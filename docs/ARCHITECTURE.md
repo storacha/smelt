@@ -67,7 +67,7 @@ flowchart TB
     delegator --> dynamodb["dynamodb-local<br/>:8000"]
     redis --> ipni["ipni<br/>:3000/:3003"]
 
-    signing --> piri["piri<br/>:3000→:3333"]
+    signing --> piri["piri<br/>:3000→:4000"]
     dynamodb --> piri
     ipni --> indexer["indexer<br/>:80→:9000"]
 
@@ -224,7 +224,7 @@ pkg/indexerclient/client.go → UCAN client for Indexer communication (assert/in
 
 ---
 
-### 6. Piri - Port 3000 (exposed as 3333)
+### 6. Piri - Port 3000 (exposed as 4000)
 
 **Role**: Storage node implementing the Storacha storage protocol with PDP proofs.
 
@@ -794,7 +794,7 @@ This bypasses strict delegation chain verification for easier local development.
 | ipni (ingest)   | 3003          | 3003          | HTTP      |
 | indexer         | 80            | 9000          | HTTP/UCAN |
 | upload          | 8080          | 8080          | HTTP/UCAN |
-| piri            | 3000          | 3333          | HTTP/UCAN |
+| piri            | 3000          | 4000          | HTTP/UCAN |
 | dynamodb-local  | 8000          | 8000          | HTTP      |
 | signing-service | 7446          | 7446          | HTTP      |
 | delegator       | 8080          | 8081          | HTTP/UCAN |
@@ -850,7 +850,7 @@ guppy retrieve <space-did> <root-cid> ./downloads
 - Ensure PRINCIPAL_MAPPING is correct for did:web resolution
 
 ### Piri connection failures
-- Check piri health: `curl http://localhost:3333/`
+- Check piri health: `curl http://localhost:4000/`
 - Verify PIRI_DID matches piri's actual identity
 - Check signing-service is healthy for PDP operations
 

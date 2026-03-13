@@ -7,9 +7,10 @@
 
 services:
   piri:
-    image: ${PIRI_IMAGE:-forreststoracha/piri:dev}
+    image: ${PIRI_IMAGE:-ghcr.io/storacha/piri:main}
+    user: "0:0"  # Run as root for volume permissions (Alpine image runs as non-root)
     ports:
-      - "3333:3000"
+      - "4000:3000"  # Base port for piri instances (piri-N uses 4000+N)
     volumes:
       - piri-data:/data/piri
       - ../../generated/keys:/keys:ro
@@ -20,8 +21,10 @@ services:
     entrypoint: ["/entrypoint.sh"]
     environment:
       # DynamoDB endpoint for registering with delegator allow list
+      # Piri nodes self register with the delegator via these values.
       - DYNAMODB_ENDPOINT=http://dynamodb-local:8000
       - DYNAMODB_TABLE=delegator-allow-list
+      # required
       - OPERATOR_EMAIL=local@test.com
       # docker network lacks https, so resolve over http
       - PIRI_UCAN_INSECURE_DID_RESOLUTION=true
@@ -40,7 +43,8 @@ services:
         condition: service_healthy
     healthcheck:
       # /readyz returns failed during init (starting), OK when server is ready
-      test: ["CMD", "curl", "-sf", "http://localhost:3000/readyz"]
+      # Use -O /dev/null instead of --spider to send GET (not HEAD) request
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:3000/readyz"]
       interval: 10s
       timeout: 5s
       retries: 30
