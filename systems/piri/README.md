@@ -10,12 +10,12 @@ Storage node with PDP (Proof of Data Possession) proofs.
 
 | Port | Service | Description |
 |------|---------|-------------|
-| 3333 | piri | Piri API (container port 3000) |
+| 4000 | piri | Piri API (container port 3000) |
 
 ## Configuration
 
-- `config/piri-config.toml` - Main Piri configuration
-- `config/piri-config-docker.toml` - Docker-specific configuration
+- `config/piri-base-config.toml` - Base configuration (contracts, services)
+- `config/piri-overrides.toml` - Additional overrides (telemetry, etc.)
 - `entrypoint.sh` - Initialization and startup script
 
 ## Keys

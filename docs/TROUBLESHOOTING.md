@@ -751,7 +751,7 @@ curl -s http://localhost:3000/health
 curl -s -o /dev/null -w "%{http_code}" http://localhost:9000/
 
 # Piri (should return 200 OK)
-curl -s -o /dev/null -w "%{http_code}" http://localhost:3333/
+curl -s -o /dev/null -w "%{http_code}" http://localhost:4000/
 
 # Upload (should return 200 OK)
 curl -s -o /dev/null -w "%{http_code}" http://localhost:8080/health

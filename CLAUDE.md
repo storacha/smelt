@@ -37,6 +37,7 @@ Blockchain-verified storage proofs. Piri (the storage node) periodically proves 
 
 ```
 smelt/
+├── .env                     # Service image defaults (configurable)
 ├── compose.yml              # Root compose file - includes all systems
 ├── Makefile                 # Primary developer interface
 ├── scripts/
@@ -107,23 +108,53 @@ docker compose exec upload sh
 
 ### Testing the Upload Flow
 
+The guppy CLI has a specific workflow that must be followed:
+
 ```bash
 # Enter the guppy container
 make shell-guppy
 
-# Create an account (inside container)
+# 1. Login (email can be any valid email format)
 guppy login test@example.com
 
-# Create a storage space
-guppy space create my-test-space
+# 2. Generate a space (returns space DID on stdout)
+#    The space DID looks like: did:key:z6Mk...
+export SPACE=$(guppy space generate)
+echo "Space: $SPACE"
 
-# Upload a file
-echo "test content" > /tmp/test.txt
-guppy upload /tmp/test.txt
+# 3. Create test data (minimum 1KB required for uploads)
+#    Use the randdir binary available in the guppy container:
+randdir --size 10KB --output /tmp/test-data
+
+#    randdir options:
+#      --size        Total size (e.g., 10KB, 1MB, 1GB)
+#      --output      Directory to create
+#      --seed        Seed for deterministic generation
+#      --min-file-size  Minimum file size (default 256KB)
+#      --max-file-size  Maximum file size (default 32MB)
+
+# 4. Add source to space (does NOT upload yet)
+guppy upload source add $SPACE /tmp/test-data
+
+# 5. Upload all sources in the space
+guppy upload $SPACE
+# Output: "Upload completed successfully: bafybeic..."
+
+# 6. Retrieve content (optional verification)
+#    Extract CID from upload output, then:
+guppy retrieve $SPACE <CID> /tmp/retrieved
 
 # The upload traverses: guppy -> upload -> piri -> indexer
 # with blockchain proofs submitted via signing-service
 ```
+
+**Important notes:**
+- `guppy space generate` takes no arguments and returns the space DID on stdout
+- Files must be minimum 1KB (use `randdir` to generate test data)
+- Must add sources with `guppy upload source add $SPACE [PATH]` before uploading
+- Upload command is `guppy upload $SPACE` (uploads all sources in that space)
+- Uploads are per-space; when content changes and upload is re-run, changes are uploaded (like rsync)
+- Multiple sources can be added to a space; each gets its own CID in the upload output
 
 ### Regenerating Keys and Proofs
 
@@ -144,11 +175,10 @@ make clean && make up
 | delegator | 8081 | HTTP/UCAN | Delegation issuance |
 | ipni | 3000, 3002, 3003 | HTTP | Content discovery |
 | indexer | 9000 | HTTP/UCAN | Claims cache |
-| piri | 3333 | HTTP/UCAN | Storage node |
+| piri | 4000 | HTTP/UCAN | Storage node |
 | upload | 8080 | HTTP/UCAN | Upload coordination |
 | guppy | (none) | CLI | Client container |
 
-Note: Some services use different internal vs external ports (e.g., piri listens on 3000 internally, exposed as 3333).
 
 ## Configuration Files
 
@@ -242,7 +272,7 @@ Common causes:
 
 ### Piri Connection Failures
 
-- Check piri health: `curl http://localhost:3333/`
+- Check piri health: `curl http://localhost:4000/`
 - Verify signing-service is healthy (needed for PDP operations)
 - Check blockchain is running: `curl -X POST http://localhost:8545 -H "Content-Type: application/json" -d '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}'`
 
