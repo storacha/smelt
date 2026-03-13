@@ -56,6 +56,13 @@ services:
         condition: service_healthy
       upload:
         condition: service_healthy
+      # Profile-only dependencies (ignored when profile is inactive)
+      piri-postgres:
+        condition: service_healthy
+        required: false
+      piri-minio:
+        condition: service_healthy
+        required: false
     healthcheck:
       # /readyz returns failed during init (starting), OK when server is ready
       # Use -O /dev/null instead of --spider to send GET (not HEAD) request

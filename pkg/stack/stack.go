@@ -138,6 +138,11 @@ func NewStack(ctx context.Context, t *testing.T, opts ...Option) (*Stack, error)
 
 	err = waitStack.Up(startCtx, compose.Wait(true))
 	if err != nil {
+		// Clean up containers on startup failure
+		_ = composeStack.Down(context.Background(),
+			compose.RemoveOrphans(true),
+			compose.RemoveVolumes(true),
+		)
 		return nil, fmt.Errorf("start stack: %w", err)
 	}
 
