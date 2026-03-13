@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/docker/docker/pkg/stdcopy"
+	"github.com/docker/go-connections/nat"
 	"github.com/testcontainers/testcontainers-go/modules/compose"
 	"github.com/testcontainers/testcontainers-go/wait"
 )
@@ -86,11 +87,19 @@ func NewStack(ctx context.Context, t *testing.T, opts ...Option) (*Stack, error)
 		t.Logf("smeltery: mounting local piri binary from %s", cfg.piriBinaryPath)
 	}
 
-	// 7. Create compose stack
-	composeStack, err := compose.NewDockerComposeWith(
-		compose.StackIdentifier("smeltery-"+sanitizeTestName(t.Name())),
+	// 7. Create compose stack with optional profiles
+	composeOpts := []compose.ComposeStackOption{
+		compose.StackIdentifier("smeltery-" + sanitizeTestName(t.Name())),
 		compose.WithStackFiles(composeFiles...),
-	)
+	}
+
+	// Add profiles if any are enabled (e.g., piri-postgres, piri-s3)
+	if profiles := cfg.buildProfiles(); len(profiles) > 0 {
+		composeOpts = append(composeOpts, compose.WithProfiles(profiles...))
+		t.Logf("smeltery: enabling profiles: %v", profiles)
+	}
+
+	composeStack, err := compose.NewDockerComposeWith(composeOpts...)
 	if err != nil {
 		return nil, fmt.Errorf("create compose: %w", err)
 	}
@@ -103,14 +112,31 @@ func NewStack(ctx context.Context, t *testing.T, opts ...Option) (*Stack, error)
 		defer cancel()
 	}
 
-	err = composeStack.
+	// Build wait strategies for core services
+	waitStack := composeStack.
 		WithEnv(env).
 		WaitForService("blockchain", wait.ForListeningPort("8545/tcp").WithStartupTimeout(2*time.Minute)).
-		WaitForService("piri", wait.ForHTTP("/readyz").WithPort("3000/tcp").WithStartupTimeout(3*time.Minute)).
 		WaitForService("upload", wait.ForHTTP("/health").WithPort("80/tcp").WithStartupTimeout(2*time.Minute)).
 		WaitForService("indexer", wait.ForHTTP("/").WithPort("80/tcp").WithStartupTimeout(2*time.Minute)).
-		WaitForService("delegator", wait.ForHTTP("/healthcheck").WithPort("80/tcp").WithStartupTimeout(2*time.Minute)).
-		Up(startCtx, compose.Wait(true))
+		WaitForService("delegator", wait.ForHTTP("/healthcheck").WithPort("80/tcp").WithStartupTimeout(2*time.Minute))
+
+	// Add wait strategies for piri storage backend services (must be ready before piri)
+	if cfg.piriPostgres {
+		waitStack = waitStack.WaitForService("piri-postgres",
+			wait.ForSQL("5432/tcp", "postgres", func(host string, port nat.Port) string {
+				return fmt.Sprintf("postgres://piri:piri@%s:%s/piri?sslmode=disable", host, port.Port())
+			}).WithStartupTimeout(1*time.Minute))
+	}
+	if cfg.piriS3 {
+		waitStack = waitStack.WaitForService("piri-minio",
+			wait.ForHTTP("/minio/health/ready").WithPort("9000/tcp").WithStartupTimeout(1*time.Minute))
+	}
+
+	// Wait for piri last (depends on storage backends)
+	waitStack = waitStack.WaitForService("piri",
+		wait.ForHTTP("/readyz").WithPort("3000/tcp").WithStartupTimeout(3*time.Minute))
+
+	err = waitStack.Up(startCtx, compose.Wait(true))
 	if err != nil {
 		return nil, fmt.Errorf("start stack: %w", err)
 	}
