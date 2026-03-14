@@ -17,6 +17,10 @@ type config struct {
 	// Binary overrides (mount local binary instead of using image's binary)
 	piriBinaryPath string
 
+	// Piri storage profiles
+	piriPostgres bool // Use PostgreSQL instead of SQLite
+	piriS3       bool // Use S3 (MinIO) instead of filesystem
+
 	// Stack configuration
 	timeout       time.Duration
 	keepOnFailure bool
@@ -57,7 +61,27 @@ func (c *config) buildEnv() map[string]string {
 		env["IPNI_IMAGE"] = c.ipniImage
 	}
 
+	// Piri storage backend configuration
+	if c.piriPostgres {
+		env["PIRI_DB_BACKEND"] = "postgres"
+	}
+	if c.piriS3 {
+		env["PIRI_BLOB_BACKEND"] = "s3"
+	}
+
 	return env
+}
+
+// buildProfiles returns the list of Docker Compose profiles to enable.
+func (c *config) buildProfiles() []string {
+	var profiles []string
+	if c.piriPostgres {
+		profiles = append(profiles, "piri-postgres")
+	}
+	if c.piriS3 {
+		profiles = append(profiles, "piri-s3")
+	}
+	return profiles
 }
 
 // Option configures a Stack.
@@ -144,5 +168,31 @@ func WithTimeout(d time.Duration) Option {
 func WithKeepOnFailure() Option {
 	return func(c *config) {
 		c.keepOnFailure = true
+	}
+}
+
+// WithPiriPostgres enables the PostgreSQL database backend for piri.
+// This starts an additional piri-postgres service and configures piri to use
+// PostgreSQL instead of the default SQLite database.
+//
+// Example:
+//
+//	s := stack.MustNewStack(t, stack.WithPiriPostgres())
+func WithPiriPostgres() Option {
+	return func(c *config) {
+		c.piriPostgres = true
+	}
+}
+
+// WithPiriS3 enables the S3 (MinIO) blob storage backend for piri.
+// This starts an additional piri-minio service and configures piri to use
+// S3-compatible storage instead of the default filesystem storage.
+//
+// Example:
+//
+//	s := stack.MustNewStack(t, stack.WithPiriS3())
+func WithPiriS3() Option {
+	return func(c *config) {
+		c.piriS3 = true
 	}
 }

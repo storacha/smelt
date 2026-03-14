@@ -60,17 +60,20 @@ func extractFiles(t *testing.T) (string, error) {
 		}
 	}
 
+	// TODO stress tester is a wip
 	// Create stub for stress-tester (in separate Go module, can't embed)
-	stressDir := filepath.Join(tempDir, "systems", "stress-tester")
-	if err := os.MkdirAll(stressDir, 0755); err != nil {
-		return "", err
-	}
-	stressCompose := `# Stub - stress-tester not available in smeltery
-services: {}
-`
-	if err := os.WriteFile(filepath.Join(stressDir, "compose.yml"), []byte(stressCompose), 0644); err != nil {
-		return "", err
-	}
+	/*
+			stressDir := filepath.Join(tempDir, "systems", "stress-tester")
+			if err := os.MkdirAll(stressDir, 0755); err != nil {
+				return "", err
+			}
+			stressCompose := `# Stub - stress-tester not available in smeltery
+		services: {}
+		`
+			if err := os.WriteFile(filepath.Join(stressDir, "compose.yml"), []byte(stressCompose), 0644); err != nil {
+				return "", err
+			}
+	*/
 
 	return tempDir, nil
 }
