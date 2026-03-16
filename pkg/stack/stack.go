@@ -24,6 +24,7 @@ import (
 
 	"github.com/docker/docker/pkg/stdcopy"
 	"github.com/docker/go-connections/nat"
+	_ "github.com/lib/pq" // postgres driver for wait.ForSQL
 	"github.com/testcontainers/testcontainers-go/modules/compose"
 	"github.com/testcontainers/testcontainers-go/wait"
 )

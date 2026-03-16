@@ -4,6 +4,8 @@ go 1.25.3
 
 require (
 	github.com/docker/docker v28.5.1+incompatible
+	github.com/docker/go-connections v0.6.0
+	github.com/lib/pq v0.0.0-20150723085316-0dad96c0b94f
 	github.com/storacha/go-ucanto v0.7.2
 	github.com/testcontainers/testcontainers-go v0.40.0
 	github.com/testcontainers/testcontainers-go/modules/compose v0.40.0
@@ -56,7 +58,6 @@ require (
 	github.com/docker/distribution v2.8.3+incompatible // indirect
 	github.com/docker/docker-credential-helpers v0.9.3 // indirect
 	github.com/docker/go v1.5.1-1.0.20160303222718-d30aec9fd63c // indirect
-	github.com/docker/go-connections v0.6.0 // indirect
 	github.com/docker/go-metrics v0.0.1 // indirect
 	github.com/docker/go-units v0.5.0 // indirect
 	github.com/ebitengine/purego v0.8.4 // indirect
