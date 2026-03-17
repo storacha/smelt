@@ -62,7 +62,8 @@ smelt/
 │   │   └── indexer/       # Content claims cache
 │   ├── piri/              # Storage node
 │   ├── upload/            # Upload orchestration (mock w3infra)
-│   └── guppy/             # CLI client
+│   ├── guppy/             # CLI client
+│   └── telemetry/         # Optional observability (Grafana, Prometheus, Tempo)
 └── docs/
     └── ARCHITECTURE.md     # Detailed service interaction diagrams
 ```
@@ -164,6 +165,67 @@ make regen    # Regenerate all keys and proofs
 make clean && make up
 ```
 
+### Using Telemetry (Optional)
+
+The telemetry stack provides metrics and distributed tracing via Grafana.
+
+```bash
+# Start with telemetry enabled
+make up-telemetry
+
+# View Grafana URL and dashboard info
+make grafana
+
+# Check telemetry service status
+make telemetry-status
+```
+
+**Grafana:** http://localhost:3001 (anonymous admin access, no login required)
+
+The telemetry stack includes:
+- **OTEL Collector**: Receives telemetry from services via OTLP
+- **Prometheus**: Metrics storage and querying
+- **Tempo**: Distributed trace storage
+- **Grafana**: Visualization dashboards
+
+Services like IPNI and Piri automatically send telemetry when started with `make up-telemetry`.
+
+### Piri Storage Profiles (Optional)
+
+Piri supports different storage backends via composable profiles. Storage services run on an isolated network accessible only to piri.
+
+```bash
+# PostgreSQL database (instead of SQLite)
+make up-piri-postgres
+
+# S3 blob storage via MinIO (instead of filesystem)
+make up-piri-s3
+
+# Both PostgreSQL and S3
+make up-piri-postgres-s3
+
+# Or compose directly:
+docker compose --profile piri-postgres --profile piri-s3 up -d
+```
+
+Environment variables for customization:
+- `PIRI_DB_BACKEND`: `sqlite` (default) or `postgres`
+- `PIRI_BLOB_BACKEND`: `filesystem` (default) or `s3`
+
+**Go API** (pkg/stack):
+```go
+// PostgreSQL backend
+s := stack.MustNewStack(t, stack.WithPiriPostgres())
+
+// S3 backend
+s := stack.MustNewStack(t, stack.WithPiriS3())
+
+// Both backends
+s := stack.MustNewStack(t, stack.WithPiriPostgres(), stack.WithPiriS3())
+```
+
+**Network isolation**: The `piri-postgres` and `piri-minio` services are on a private `piri-storage-net` network. Only piri can access them; other services cannot reach these backends directly.
+
 ## Service Ports
 
 | Service | Port | Protocol | Description |
@@ -179,6 +241,24 @@ make clean && make up
 | upload | 8080 | HTTP/UCAN | Upload coordination |
 | guppy | (none) | CLI | Client container |
 
+**Telemetry (optional, requires `make up-telemetry`):**
+
+| Service | Port | Protocol | Description |
+|---------|------|----------|-------------|
+| grafana | 3001 | HTTP | Dashboard visualization |
+| prometheus | 9090 | HTTP | Metrics storage |
+| tempo | 3200 | HTTP | Distributed tracing |
+| otel-collector | 4317/4318 | gRPC/HTTP | OTLP telemetry receiver |
+
+**Piri Storage (optional, requires `--profile piri-postgres` or `--profile piri-s3`):**
+
+| Service | Port | Protocol | Description |
+|---------|------|----------|-------------|
+| piri-postgres | 5432 | PostgreSQL | Piri database |
+| piri-minio | 9002 | S3 | Blob storage API (isolated network) |
+| piri-minio | 9003 | HTTP | MinIO console |
+
+Note: Some services use different internal vs external ports (e.g., piri listens on 3000 internally, exposed as 4000).
 
 ## Configuration Files
 
@@ -290,6 +370,97 @@ The capability string must match exactly. `space/blob/add` is not `blob/add`. Ch
 | `storacha/delegator` | Delegation service |
 | `storacha/go-ucanto` | UCAN implementation in Go |
 | `storacha/specs` | Protocol specifications |
+
+## CI/CD Infrastructure
+
+Smelt serves as the integration testing backbone for the Storacha Forge network. When component repositories push new `:dev` tags, smelt automatically runs integration and stress tests.
+
+### CI Architecture
+
+```
+Component Repos                          Smelt CI
+┌─────────────────┐                    ┌─────────────────────────────────┐
+│ piri            │──┐                 │  Integration Tests              │
+│ guppy           │  │  repository_    │  (GitHub-hosted, ~10 min)       │
+│ indexing-service│  │  dispatch       │  - Stack health checks          │
+│ delegator       │──┼────────────────▶│  - Upload flow verification     │
+│ sprue           │  │                 │  - Delegation tests             │
+│ piri-signing    │──┘                 ├─────────────────────────────────┤
+└─────────────────┘                    │  Stress Tests                   │
+                                       │  (Self-hosted, nightly)         │
+                                       │  - Concurrent uploads           │
+                                       │  - Load testing                 │
+                                       └─────────────────────────────────┘
+```
+
+### Test Structure
+
+```
+tests/
+├── integration/
+│   ├── run-tests.sh              # Main test runner
+│   ├── test-stack-health.sh      # Verify all services healthy
+│   ├── test-upload-flow.sh       # End-to-end upload test
+│   └── test-delegation.sh        # UCAN delegation tests
+├── stress/
+│   ├── run-stress.sh             # Stress test runner
+│   └── test-concurrent-uploads.sh
+└── lib/
+    ├── common.sh                 # Shared utilities (guppy_cmd, is_healthy, etc.)
+    └── assertions.sh             # Test assertion helpers
+```
+
+### Running Tests Locally
+
+```bash
+# Start the stack
+make up
+
+# Wait for all services to be healthy
+./scripts/ci/wait-for-healthy.sh --timeout 300
+
+# Run integration tests
+./tests/integration/run-tests.sh
+
+# Run stress tests (short duration for local testing)
+./tests/stress/run-stress.sh --duration 1 --concurrent 2
+```
+
+### Configurable Service Images
+
+All service images are configurable via environment variables, with defaults defined in `.env`. This allows switching registries, images, or tags for CI, local builds, or testing:
+
+```bash
+# Override specific images (full image specification)
+PIRI_IMAGE=ghcr.io/storacha/piri:v1.2.3 make up
+
+# Override multiple images
+PIRI_IMAGE=myregistry/piri:test GUPPY_IMAGE=myregistry/guppy:test make up
+
+# Available variables (defaults in .env):
+# PIRI_IMAGE, GUPPY_IMAGE, DELEGATOR_IMAGE, INDEXER_IMAGE,
+# IPNI_IMAGE, SIGNER_IMAGE, UPLOAD_IMAGE, BLOCKCHAIN_IMAGE
+```
+
+### GitHub Actions Workflows
+
+- `.github/workflows/integration-tests.yml` - Triggered by repository_dispatch + scheduled every 6 hours
+- `.github/workflows/stress-tests.yml` - Nightly stress tests on self-hosted runner
+
+### Triggering from Component Repos
+
+Component repos trigger smelt tests via repository_dispatch:
+
+```yaml
+# In component repo's CI workflow
+- name: Trigger Smelt Integration Tests
+  uses: peter-evans/repository-dispatch@v3
+  with:
+    token: ${{ secrets.SMELT_TRIGGER_TOKEN }}
+    repository: storacha/smelt
+    event-type: component-updated
+    client-payload: '{"component": "piri", "sha": "${{ github.sha }}"}'
+```
 
 ## Further Reading
 

@@ -1,0 +1,38 @@
+# Stress Tester Configuration - Container version
+# Used when running inside Docker
+
+guppy:
+  email: "stress-test@test.local"
+  binary_path: "/usr/local/bin/guppy"
+  # Config is mounted at default location: /root/.config/guppy/config.toml
+  config_path: ""
+
+store:
+  path: "/data/stress.db"
+
+telemetry:
+  prometheus_port: 9091  # Avoid conflict with prometheus on 9090
+  otlp_endpoint: "otel-collector:4318"
+  service_name: "stress-tester"
+
+runner:
+  mode: "burst"
+
+  burst:
+    spaces: 2
+    uploads_per_space: 3
+    concurrent_uploads: 1  # Keep at 1 to avoid SQLite lock contention in guppy
+    data_size_mb: 1
+    verify: false  # Disabled: guppy retrieval returns different structure than uploaded
+
+  continuous:
+    uploads_per_minute: 10
+    retrievals_per_minute: 20
+    verification_per_minute: 5
+    max_spaces: 100
+    data_size_min_mb: 1
+    data_size_max_mb: 100
+
+  chaos:
+    min_delay_ms: 100
+    max_delay_ms: 5000

@@ -11,10 +11,6 @@ DATA_DIR="/data/piri"
 TEMP_DIR="/tmp/piri"
 CONFIG_FILE="${DATA_DIR}/piri-config.toml"
 
-# Storage backend config files
-DB_POSTGRES_CONFIG="/config/piri-db-postgres.toml"
-BLOB_S3_CONFIG="/config/piri-blob-s3.toml"
-
 # Network settings (can be overridden via environment)
 LOTUS_ENDPOINT="${LOTUS_ENDPOINT:-ws://blockchain:8545}"
 PUBLIC_URL="${PUBLIC_URL:-http://piri:3000}"
@@ -26,6 +22,19 @@ REGISTRAR_URL="${REGISTRAR_URL:-http://delegator:80}"
 # Storage backend selection (independent axes)
 DB_BACKEND="${PIRI_DB_BACKEND:-sqlite}"
 BLOB_BACKEND="${PIRI_BLOB_BACKEND:-filesystem}"
+
+# PostgreSQL settings (used when DB_BACKEND=postgres)
+DB_POSTGRES_URL="${PIRI_DB_POSTGRES_URL:-postgres://piri:piri@piri-postgres:5432/piri?sslmode=disable}"
+DB_POSTGRES_MAX_OPEN_CONNS="${PIRI_DB_POSTGRES_MAX_OPEN_CONNS:-10}"
+DB_POSTGRES_MAX_IDLE_CONNS="${PIRI_DB_POSTGRES_MAX_IDLE_CONNS:-5}"
+DB_POSTGRES_CONN_MAX_LIFETIME="${PIRI_DB_POSTGRES_CONN_MAX_LIFETIME:-30m}"
+
+# S3 settings (used when BLOB_BACKEND=s3)
+S3_ENDPOINT="${PIRI_S3_ENDPOINT:-piri-minio:9000}"
+S3_BUCKET_PREFIX="${PIRI_S3_BUCKET_PREFIX:-piri-}"
+S3_ACCESS_KEY_ID="${PIRI_S3_ACCESS_KEY_ID:-minioadmin}"
+S3_SECRET_ACCESS_KEY="${PIRI_S3_SECRET_ACCESS_KEY:-minioadmin}"
+S3_INSECURE="${PIRI_S3_INSECURE:-true}"
 
 echo "=== Piri Entrypoint ==="
 echo "  Database backend: $DB_BACKEND"
@@ -54,44 +63,49 @@ if [ -f "$CONFIG_FILE" ] && grep -q "proof_set" "$CONFIG_FILE" 2>/dev/null; then
 else
     [ -f "$CONFIG_FILE" ] && rm -f "$CONFIG_FILE"
 
-    # Create merged base config with storage backend settings
-    # This ensures piri init uses the correct storage backends from the start
-    MERGED_BASE_CONFIG="${TEMP_DIR}/merged-base-config.toml"
-    cp "$BASE_CONFIG" "$MERGED_BASE_CONFIG"
-
-    # Append database backend config if postgres
-    if [ "$DB_BACKEND" = "postgres" ] && [ -f "$DB_POSTGRES_CONFIG" ]; then
-        echo "" >> "$MERGED_BASE_CONFIG"
-        echo "# --- database backend: postgres ---" >> "$MERGED_BASE_CONFIG"
-        cat "$DB_POSTGRES_CONFIG" >> "$MERGED_BASE_CONFIG"
-    fi
-
-    # Append blob storage backend config if s3
-    if [ "$BLOB_BACKEND" = "s3" ] && [ -f "$BLOB_S3_CONFIG" ]; then
-        echo "" >> "$MERGED_BASE_CONFIG"
-        echo "# --- blob backend: s3 ---" >> "$MERGED_BASE_CONFIG"
-        cat "$BLOB_S3_CONFIG" >> "$MERGED_BASE_CONFIG"
-    fi
-
     cd "$DATA_DIR"
-    /usr/bin/piri init \
-        --base-config="$MERGED_BASE_CONFIG" \
-        --registrar-url="$REGISTRAR_URL" \
-        --data-dir="$DATA_DIR" \
-        --temp-dir="$TEMP_DIR" \
-        --key-file="$KEY_FILE" \
-        --wallet-file="$WALLET_FILE" \
-        --lotus-endpoint="$LOTUS_ENDPOINT" \
-        --public-url="$PUBLIC_URL" \
-        --port="$PORT" \
-        --host="$HOST" \
-        --operator-email="$OPERATOR_EMAIL"
+
+    # Build init command with base flags
+    INIT_CMD="/usr/bin/piri init \
+        --base-config=$BASE_CONFIG \
+        --registrar-url=$REGISTRAR_URL \
+        --data-dir=$DATA_DIR \
+        --temp-dir=$TEMP_DIR \
+        --key-file=$KEY_FILE \
+        --wallet-file=$WALLET_FILE \
+        --lotus-endpoint=$LOTUS_ENDPOINT \
+        --public-url=$PUBLIC_URL \
+        --port=$PORT \
+        --host=$HOST \
+        --operator-email=$OPERATOR_EMAIL"
+
+    # Add PostgreSQL flags if postgres backend selected
+    if [ "$DB_BACKEND" = "postgres" ]; then
+        INIT_CMD="$INIT_CMD \
+            --db-type=postgres \
+            --db-postgres-url=$DB_POSTGRES_URL \
+            --db-postgres-max-open-conns=$DB_POSTGRES_MAX_OPEN_CONNS \
+            --db-postgres-max-idle-conns=$DB_POSTGRES_MAX_IDLE_CONNS \
+            --db-postgres-conn-max-lifetime=$DB_POSTGRES_CONN_MAX_LIFETIME"
+    fi
+
+    # Add S3 flags if s3 backend selected
+    if [ "$BLOB_BACKEND" = "s3" ]; then
+        INIT_CMD="$INIT_CMD \
+            --s3-endpoint=$S3_ENDPOINT \
+            --s3-bucket-prefix=$S3_BUCKET_PREFIX \
+            --s3-access-key-id=$S3_ACCESS_KEY_ID \
+            --s3-secret-access-key=$S3_SECRET_ACCESS_KEY"
+        if [ "$S3_INSECURE" = "true" ]; then
+            INIT_CMD="$INIT_CMD --s3-insecure"
+        fi
+    fi
+
+    # Execute the init command
+    eval $INIT_CMD
 
     # Config created as piri-config.toml in DATA_DIR (current dir)
     echo "  Init complete"
-
-    # Clean up merged config
-    rm -f "$MERGED_BASE_CONFIG"
 fi
 
 # Append overrides config if present and not already applied
