@@ -1,0 +1,65 @@
+# Stress Tester Configuration
+# All values can be overridden via environment variables with STRESS_ prefix
+# e.g., STRESS_RUNNER_MODE=continuous
+
+guppy:
+  # Email for guppy login
+  email: "stress-test@test.local"
+  # Path to guppy binary (default: guppy)
+  binary_path: "/home/frrist/workspace/src/github.com/storacha/guppy/guppy"
+  # Path to guppy config file (optional)
+  config_path: "/home/frrist/.config/guppy/config.toml"
+
+store:
+  # Path to SQLite database
+  path: "/home/frrist/workspace/src/github.com/storacha/smelt/systems/stress-tester/stress.db"
+
+telemetry:
+  # Port for Prometheus metrics endpoint
+  prometheus_port: 9090
+  # OTLP endpoint for metrics export (optional)
+  otlp_endpoint: ""
+  # Service name for telemetry
+  service_name: "stress-tester"
+
+runner:
+  # Runner mode: burst, continuous, chaos
+  mode: "burst"
+
+  # Burst mode configuration
+  # Runs a fixed number of operations then exits
+  burst:
+    # Number of spaces to create
+    spaces:
+    # Number of uploads per space
+    uploads_per_space: 10
+    # Maximum concurrent uploads
+    concurrent_uploads: 1
+    # Size of test data in KB
+    data_size_mb: 10
+    # Verify uploads after completion
+    verify: true
+
+  # Continuous mode configuration
+  # Runs indefinitely at configured rates
+  continuous:
+    # Target uploads per minute
+    uploads_per_minute: 10
+    # Target retrievals per minute
+    retrievals_per_minute: 20
+    # Target verifications per minute
+    verification_per_minute: 5
+    # Maximum number of spaces to create
+    max_spaces: 100
+    # Minimum test data size in KB
+    data_size_min_mb: 1
+    # Maximum test data size in MB
+    data_size_max_mb: 100
+
+  # Chaos mode configuration
+  # Random operations with random delays
+  chaos:
+    # Minimum delay between operations in ms
+    min_delay_ms: 100
+    # Maximum delay between operations in ms
+    max_delay_ms: 5000

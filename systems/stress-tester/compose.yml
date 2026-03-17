@@ -1,0 +1,38 @@
+services:
+  stress-tester:
+    profiles:
+      - stress  # Only starts with: docker compose --profile stress up
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        VERSION: ${STRESS_VERSION:-dev}
+    stdin_open: true
+    tty: true
+    volumes:
+      - stress-data:/data
+      # Use guppy config from guppy system, but own data volume to avoid migration conflicts
+      - ../guppy/config/guppy-config.toml:/root/.config/guppy/config.toml:ro
+      - stress-guppy-data:/root/.storacha/guppy
+    environment:
+      # Send metrics to OTEL collector (push via OTLP HTTP)
+      - STRESS_TELEMETRY_OTLP_ENDPOINT=${STRESS_OTLP_ENDPOINT:-otel-collector:4318}
+    ports:
+      - "9091:9091"  # Metrics
+    depends_on:
+      upload:
+        condition: service_healthy
+      piri:
+        condition: service_healthy
+    networks:
+      - storacha-network
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9091/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  stress-data:
+  stress-guppy-data:

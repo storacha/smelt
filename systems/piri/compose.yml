@@ -28,8 +28,6 @@ services:
       - ./register-did.sh:/scripts/register-did.sh:ro
       - ./config/piri-base-config.toml:/config/piri-base-config.toml:ro
       - ./config/piri-overrides.toml:/config/piri-overrides.toml:ro
-      - ./config/piri-db-postgres.toml:/config/piri-db-postgres.toml:ro
-      - ./config/piri-blob-s3.toml:/config/piri-blob-s3.toml:ro
     entrypoint: ["/entrypoint.sh"]
     environment:
       # DynamoDB endpoint for registering with delegator allow list
@@ -40,9 +38,6 @@ services:
       - OPERATOR_EMAIL=local@test.com
       # docker network lacks https, so resolve over http
       - PIRI_UCAN_INSECURE_DID_RESOLUTION=true
-      # Storage backend selection (set by Makefile or compose command)
-      - PIRI_DB_BACKEND=${PIRI_DB_BACKEND:-sqlite}
-      - PIRI_BLOB_BACKEND=${PIRI_BLOB_BACKEND:-filesystem}
     depends_on:
       blockchain:
         condition: service_healthy

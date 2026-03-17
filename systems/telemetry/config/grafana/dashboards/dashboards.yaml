@@ -1,0 +1,15 @@
+# Grafana Dashboard Provisioning
+
+apiVersion: 1
+
+providers:
+  - name: 'Smelt Dashboards'
+    orgId: 1
+    folder: 'Smelt'
+    folderUid: smelt
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: true
+    options:
+      path: /etc/grafana/provisioning/dashboards
