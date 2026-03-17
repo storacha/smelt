@@ -92,6 +92,9 @@ func TestEmbeddedFilesExist(t *testing.T) {
 		"compose.yml",
 		".env",
 		"systems/blockchain/state/deployed-addresses.json",
+		// Piri profile configs
+		"systems/piri/config/piri-db-postgres.toml",
+		"systems/piri/config/piri-blob-s3.toml",
 	}
 
 	for _, f := range files {
@@ -149,4 +152,98 @@ func TestOptions(t *testing.T) {
 	if !cfg.keepOnFailure {
 		t.Error("WithKeepOnFailure failed")
 	}
+}
+
+func TestPiriProfileOptions(t *testing.T) {
+	t.Run("WithPiriPostgres", func(t *testing.T) {
+		cfg := defaultConfig()
+		WithPiriPostgres()(cfg)
+
+		if !cfg.piriPostgres {
+			t.Error("WithPiriPostgres did not set piriPostgres")
+		}
+
+		env := cfg.buildEnv()
+		if env["PIRI_DB_BACKEND"] != "postgres" {
+			t.Errorf("expected PIRI_DB_BACKEND=postgres, got %s", env["PIRI_DB_BACKEND"])
+		}
+
+		profiles := cfg.buildProfiles()
+		if len(profiles) != 1 || profiles[0] != "piri-postgres" {
+			t.Errorf("expected profiles=[piri-postgres], got %v", profiles)
+		}
+	})
+
+	t.Run("WithPiriS3", func(t *testing.T) {
+		cfg := defaultConfig()
+		WithPiriS3()(cfg)
+
+		if !cfg.piriS3 {
+			t.Error("WithPiriS3 did not set piriS3")
+		}
+
+		env := cfg.buildEnv()
+		if env["PIRI_BLOB_BACKEND"] != "s3" {
+			t.Errorf("expected PIRI_BLOB_BACKEND=s3, got %s", env["PIRI_BLOB_BACKEND"])
+		}
+
+		profiles := cfg.buildProfiles()
+		if len(profiles) != 1 || profiles[0] != "piri-s3" {
+			t.Errorf("expected profiles=[piri-s3], got %v", profiles)
+		}
+	})
+
+	t.Run("BothProfiles", func(t *testing.T) {
+		cfg := defaultConfig()
+		WithPiriPostgres()(cfg)
+		WithPiriS3()(cfg)
+
+		if !cfg.piriPostgres || !cfg.piriS3 {
+			t.Error("expected both piriPostgres and piriS3 to be set")
+		}
+
+		env := cfg.buildEnv()
+		if env["PIRI_DB_BACKEND"] != "postgres" {
+			t.Errorf("expected PIRI_DB_BACKEND=postgres, got %s", env["PIRI_DB_BACKEND"])
+		}
+		if env["PIRI_BLOB_BACKEND"] != "s3" {
+			t.Errorf("expected PIRI_BLOB_BACKEND=s3, got %s", env["PIRI_BLOB_BACKEND"])
+		}
+
+		profiles := cfg.buildProfiles()
+		if len(profiles) != 2 {
+			t.Errorf("expected 2 profiles, got %d", len(profiles))
+		}
+		// Order matters: postgres first, then s3
+		hasPostgres := false
+		hasS3 := false
+		for _, p := range profiles {
+			if p == "piri-postgres" {
+				hasPostgres = true
+			}
+			if p == "piri-s3" {
+				hasS3 = true
+			}
+		}
+		if !hasPostgres || !hasS3 {
+			t.Errorf("expected profiles to contain piri-postgres and piri-s3, got %v", profiles)
+		}
+	})
+
+	t.Run("NoProfiles", func(t *testing.T) {
+		cfg := defaultConfig()
+
+		profiles := cfg.buildProfiles()
+		if len(profiles) != 0 {
+			t.Errorf("expected no profiles, got %v", profiles)
+		}
+
+		env := cfg.buildEnv()
+		if _, ok := env["PIRI_DB_BACKEND"]; ok {
+			t.Error("PIRI_DB_BACKEND should not be set without profile")
+		}
+		if _, ok := env["PIRI_BLOB_BACKEND"]; ok {
+			t.Error("PIRI_BLOB_BACKEND should not be set without profile")
+		}
+	})
 }

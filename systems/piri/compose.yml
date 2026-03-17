@@ -4,6 +4,16 @@
 # Uses two-step init process:
 #   1. piri init (registers with blockchain and delegator, generates config)
 #   2. piri serve (starts server using generated config)
+#
+# Storage Profiles (composable):
+#   --profile piri-postgres  : Use PostgreSQL instead of SQLite
+#   --profile piri-s3        : Use S3 (MinIO) instead of filesystem
+#
+# Examples:
+#   docker compose up                                        # Default: sqlite + filesystem
+#   docker compose --profile piri-postgres up                # PostgreSQL + filesystem
+#   docker compose --profile piri-s3 up                      # SQLite + S3
+#   docker compose --profile piri-postgres --profile piri-s3 up  # PostgreSQL + S3
 
 services:
   piri:
@@ -18,6 +28,8 @@ services:
       - ./register-did.sh:/scripts/register-did.sh:ro
       - ./config/piri-base-config.toml:/config/piri-base-config.toml:ro
       - ./config/piri-overrides.toml:/config/piri-overrides.toml:ro
+      - ./config/piri-db-postgres.toml:/config/piri-db-postgres.toml:ro
+      - ./config/piri-blob-s3.toml:/config/piri-blob-s3.toml:ro
     entrypoint: ["/entrypoint.sh"]
     environment:
       # DynamoDB endpoint for registering with delegator allow list
@@ -28,6 +40,9 @@ services:
       - OPERATOR_EMAIL=local@test.com
       # docker network lacks https, so resolve over http
       - PIRI_UCAN_INSECURE_DID_RESOLUTION=true
+      # Storage backend selection (set by Makefile or compose command)
+      - PIRI_DB_BACKEND=${PIRI_DB_BACKEND:-sqlite}
+      - PIRI_BLOB_BACKEND=${PIRI_BLOB_BACKEND:-filesystem}
     depends_on:
       blockchain:
         condition: service_healthy
@@ -41,6 +56,13 @@ services:
         condition: service_healthy
       upload:
         condition: service_healthy
+      # Profile-only dependencies (ignored when profile is inactive)
+      piri-postgres:
+        condition: service_healthy
+        required: false
+      piri-minio:
+        condition: service_healthy
+        required: false
     healthcheck:
       # /readyz returns failed during init (starting), OK when server is ready
       # Use -O /dev/null instead of --spider to send GET (not HEAD) request
@@ -52,6 +74,57 @@ services:
     restart: unless-stopped
     networks:
       - storacha-network
+      - piri-storage-net  # Private network for postgres/minio access
+
+  # PostgreSQL for piri database (activated with --profile piri-postgres)
+  piri-postgres:
+    image: postgres:16-alpine
+    profiles: ["piri-postgres"]
+    ports:
+      - "5432:5432"   # Exposed for host access (psql, etc.)
+    environment:
+      POSTGRES_USER: piri
+      POSTGRES_PASSWORD: piri
+      POSTGRES_DB: piri
+    volumes:
+      - piri-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U piri -d piri"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+    networks:
+      - piri-storage-net  # Private: only piri can access
+
+  # MinIO for S3-compatible blob storage (activated with --profile piri-s3)
+  piri-minio:
+    image: minio/minio:latest
+    profiles: ["piri-s3"]
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports:
+      - "9002:9000"   # S3 API (external 9002, internal 9000 - avoids conflict with indexer on 9000)
+      - "9003:9001"   # Console (external 9003, internal 9001)
+    volumes:
+      - piri-minio-data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+    networks:
+      - piri-storage-net  # Private: only piri can access
+
+networks:
+  piri-storage-net:
+    # Private network for piri's storage backends
+    # Not external - created/managed by this compose file
 
 volumes:
   piri-data:
+  piri-postgres-data:
+  piri-minio-data:
