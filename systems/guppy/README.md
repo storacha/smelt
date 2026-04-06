@@ -19,7 +19,7 @@ CLI client for uploading and retrieving content.
 
 ```bash
 # Access the guppy shell
-make guppy
+make shell-guppy
 # Or directly:
 docker compose exec guppy bash
 

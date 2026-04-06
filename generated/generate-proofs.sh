@@ -21,9 +21,12 @@ FORCE=${1:-""}
 # Check for mkdelegation
 MKDELEGATION="${MKDELEGATION:-mkdelegation}"
 if ! command -v "$MKDELEGATION" &> /dev/null; then
-    echo "Error: mkdelegation not found in PATH"
-    echo "Install with: go install github.com/storacha/go-mkdelegation@latest"
-    exit 1
+    MKDELEGATION="go-mkdelegation"
+    if ! command -v "$MKDELEGATION" &> /dev/null; then
+        echo "Error: mkdelegation not found in PATH"
+        echo "Install with: go install github.com/storacha/go-mkdelegation@latest"
+        exit 1
+    fi
 fi
 
 # Check for required keys

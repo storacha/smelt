@@ -17,6 +17,8 @@ services:
         condition: service_healthy
       dynamodb-local:
         condition: service_healthy
+      minio:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:80/health"]
       interval: 10s

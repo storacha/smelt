@@ -11,6 +11,8 @@ Shared infrastructure services used by multiple systems.
 | Port | Service | Description |
 |------|---------|-------------|
 | 8000 | dynamodb-local | DynamoDB endpoint |
+| 9002 | minio | S3 API endpoint |
+| 9003 | minio | Console endpoint |
 
 ## Standalone Usage
 
