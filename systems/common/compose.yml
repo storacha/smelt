@@ -31,8 +31,8 @@ services:
       MINIO_ROOT_USER: minioadmin
       MINIO_ROOT_PASSWORD: minioadmin
     ports:
-      - "9002:9000"   # S3 API (external 9002, internal 9000 - avoids conflict with indexer on 9000)
-      - "9003:9001"   # Console (external 9003, internal 9001)
+      - "9010:9000"   # S3 API (external 9010, internal 9000 - avoids conflict with indexer on 9000)
+      - "9011:9001"   # Console (external 9011, internal 9001)
     volumes:
       - minio-data:/data
     healthcheck:
