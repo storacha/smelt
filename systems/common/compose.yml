@@ -5,6 +5,9 @@
 #
 # MinIO for S3-compatible object storage.
 # Used by: upload
+#
+# SMTP4Dev for email testing.
+# Used by: upload
 
 services:
   dynamodb-local:
