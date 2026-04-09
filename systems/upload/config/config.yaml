@@ -8,6 +8,7 @@ deployment:
 server:
   host: "0.0.0.0"
   port: 80  # Use port 80 for did:web resolution
+  public_url: http://localhost:8080
 
 identity:
   key_file: "/keys/upload.pem"
@@ -18,9 +19,11 @@ indexer:
   did: "did:web:indexer"
 
 mailer:
-  type: "nop"
+  type: "smtp"
   sender: "dev@storacha.network"
-  postmark_token: ""
+  smtp_addr: "email:25"
+  smtp_auth_user: "upload"
+  smtp_auth_secret: "secret"
 
 dynamodb:
   endpoint: "http://dynamodb-local:8000"

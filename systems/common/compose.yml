@@ -40,6 +40,13 @@ services:
     restart: unless-stopped
     networks:
       - storacha-network
+  email:
+    image: rnwood/smtp4dev:v3
+    ports:
+      - "2525:25"
+      - "2580:80"   # Web UI / API
+    networks:
+      - storacha-network
 
 volumes:
   minio-data:

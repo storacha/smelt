@@ -48,11 +48,15 @@ mkdir -p "$PROOFS_DIR"
 check_key "$KEYS_DIR/indexer.pem"
 check_key "$KEYS_DIR/delegator.pem"
 check_key "$KEYS_DIR/etracker.pem"
+check_key "$KEYS_DIR/piri.pem"
 
 # The delegator identifies as did:web:delegator when signing delegations to providers.
 # The proofs must have audience=did:web:delegator so the UCAN chain is valid.
 DELEGATOR_WEB_DID="did:web:delegator"
 echo "Using delegator DID: $DELEGATOR_WEB_DID"
+
+UPLOAD_WEB_DID="did:web:upload"
+echo "Using upload DID: $UPLOAD_WEB_DID"
 
 # Generate indexing service proof (indexer → delegator, claim/cache capability)
 INDEXING_PROOF_FILE="$PROOFS_DIR/indexing-service-proof.txt"
@@ -64,7 +68,7 @@ else
     echo "Generating indexing service proof..."
     echo "  Issuer: did:web:indexer (key: indexer.pem)"
     echo "  Audience: $DELEGATOR_WEB_DID"
-    echo "  Capability: claim/cache"
+    echo "  Capabilities: claim/cache"
 
     "$MKDELEGATION" gen \
         --issuer-private-key-file "$KEYS_DIR/indexer.pem" \
@@ -86,7 +90,7 @@ else
     echo "Generating egress tracking service proof..."
     echo "  Issuer: did:web:etracker (key: etracker.pem)"
     echo "  Audience: $DELEGATOR_WEB_DID"
-    echo "  Capability: egress/track"
+    echo "  Capabilities: egress/track"
 
     "$MKDELEGATION" gen \
         --issuer-private-key-file "$KEYS_DIR/etracker.pem" \
@@ -97,6 +101,31 @@ else
         > "$EGRESS_PROOF_FILE"
 
     echo "  [new] egress-tracking-proof.txt"
+fi
+
+# Generate piri proof (piri → upload, blob/allocate, blob/accept, blob/replica/allocate, pdp/info capability)
+PIRI_PROOF_FILE="$PROOFS_DIR/piri-proof.txt"
+if [[ -f "$PIRI_PROOF_FILE" && "$FORCE" != "--force" ]]; then
+    echo ""
+    echo "[skip] piri-proof.txt already exists"
+else
+    echo ""
+    echo "Generating piri proof..."
+    echo "  Issuer: did:key:piri (key: piri.pem)"
+    echo "  Audience: $UPLOAD_WEB_DID"
+    echo "  Capabilities: blob/allocate, blob/accept, blob/replica/allocate, pdp/info"
+
+    "$MKDELEGATION" gen \
+        --issuer-private-key-file "$KEYS_DIR/piri.pem" \
+        --audience-did-key "$UPLOAD_WEB_DID" \
+        --capabilities "blob/allocate" \
+        --capabilities "blob/accept" \
+        --capabilities "blob/replica/allocate" \
+        --capabilities "pdp/info" \
+        --skip-capability-validation \
+        > "$PIRI_PROOF_FILE"
+
+    echo "  [new] piri-proof.txt"
 fi
 
 echo ""

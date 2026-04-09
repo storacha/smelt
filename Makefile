@@ -145,9 +145,9 @@ fresh:
 	@echo "Fresh deployment complete!"
 	@echo ""
 	@echo "Next steps:"
-	@echo "  make shell-guppy           Open guppy shell"
-	@echo "  guppy login EMAIL    Create account"
-	@echo "  guppy space generate Create a space"
+	@echo "  make shell-guppy       Open guppy shell"
+	@echo "  guppy login EMAIL      Create account"
+	@echo "  guppy space generate   Create a space"
 
 # Regenerate keys and proofs (requires service restart to take effect)
 regen:
@@ -183,6 +183,10 @@ shell-guppy:
 # Shell into piri container
 shell-piri:
 	$(DOCKER) compose exec piri sh
+
+# Shell into upload container
+shell-upload:
+	$(DOCKER) compose exec upload bash
 
 # Start with telemetry stack (Grafana, Prometheus, Tempo, OTEL Collector)
 up-telemetry:
