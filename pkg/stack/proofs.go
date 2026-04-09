@@ -18,11 +18,11 @@ import (
 
 // proofSpec defines a UCAN delegation proof to generate.
 type proofSpec struct {
-	issuerKeyName string // Key file name without .pem extension
-	issuerDidWeb  string // did:web identifier for the issuer
-	audienceDid   string // DID of the audience
-	capability    string // Capability to delegate (e.g., "claim/cache")
-	outputFile    string // Output file name in proofs directory
+	issuerKeyName string   // Key file name without .pem extension
+	issuerDidWeb  string   // did:web identifier for the issuer
+	audienceDid   string   // DID of the audience
+	capabilities  []string // Capabilities to delegate (e.g., "claim/cache")
+	outputFile    string   // Output file name in proofs directory
 }
 
 // proofSpecs defines all the delegation proofs needed for the stack.
@@ -32,15 +32,21 @@ var proofSpecs = []proofSpec{
 		issuerKeyName: "indexer",
 		issuerDidWeb:  "did:web:indexer",
 		audienceDid:   "did:web:delegator",
-		capability:    "claim/cache",
+		capabilities:  []string{"claim/cache"},
 		outputFile:    "indexing-service-proof.txt",
 	},
 	{
 		issuerKeyName: "etracker",
 		issuerDidWeb:  "did:web:etracker",
 		audienceDid:   "did:web:delegator",
-		capability:    "egress/track",
+		capabilities:  []string{"egress/track"},
 		outputFile:    "egress-tracking-proof.txt",
+	},
+	{
+		issuerKeyName: "piri",
+		audienceDid:   "did:web:upload",
+		capabilities:  []string{"blob/allocate", "blob/accept", "blob/replica/allocate", "pdp/info"},
+		outputFile:    "piri-proof.txt",
 	},
 }
 
@@ -66,16 +72,21 @@ func generateDelegation(keysDir, proofsDir string, spec proofSpec) error {
 		return fmt.Errorf("load issuer key: %w", err)
 	}
 
-	// Parse the did:web for wrapping
-	issuerDidWeb, err := did.Parse(spec.issuerDidWeb)
-	if err != nil {
-		return fmt.Errorf("parse issuer did:web: %w", err)
-	}
+	var issuer ucan.Signer
+	if spec.issuerDidWeb != "" {
+		// Parse the did:web for wrapping
+		issuerDidWeb, err := did.Parse(spec.issuerDidWeb)
+		if err != nil {
+			return fmt.Errorf("parse issuer did:web: %w", err)
+		}
 
-	// Wrap with did:web identity
-	issuer, err := signer.Wrap(issuerKey, issuerDidWeb)
-	if err != nil {
-		return fmt.Errorf("wrap issuer: %w", err)
+		// Wrap with did:web identity
+		issuer, err = signer.Wrap(issuerKey, issuerDidWeb)
+		if err != nil {
+			return fmt.Errorf("wrap issuer: %w", err)
+		}
+	} else {
+		issuer = issuerKey
 	}
 
 	// Parse audience DID
@@ -84,9 +95,10 @@ func generateDelegation(keysDir, proofsDir string, spec proofSpec) error {
 		return fmt.Errorf("parse audience: %w", err)
 	}
 
-	// Create capability with the issuer's DID as the resource
-	caps := []ucan.Capability[ucan.NoCaveats]{
-		ucan.NewCapability(spec.capability, issuer.DID().String(), ucan.NoCaveats{}),
+	// Create capabilities with the issuer's DID as the resource
+	caps := make([]ucan.Capability[ucan.NoCaveats], len(spec.capabilities))
+	for i, cap := range spec.capabilities {
+		caps[i] = ucan.NewCapability(cap, issuer.DID().String(), ucan.NoCaveats{})
 	}
 
 	// Create delegation with no expiration

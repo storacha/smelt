@@ -11,11 +11,18 @@ services:
       - "8080:80"
     volumes:
       - ../../generated/keys/upload.pem:/keys/upload.pem:ro
+      - ../../generated/keys/piri.pub:/keys/piri.pub:ro
+      - ../../generated/proofs/piri-proof.txt:/proofs/piri-proof.txt:ro
+      - ./post_start.sh:/post_start.sh:ro
       - ./config:/etc/sprue:ro
+    post_start:
+      - command: sh ./post_start.sh
     depends_on:
       indexer:
         condition: service_healthy
       dynamodb-local:
+        condition: service_healthy
+      minio:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:80/health"]

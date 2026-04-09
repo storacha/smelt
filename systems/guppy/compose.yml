@@ -15,7 +15,7 @@ services:
         condition: service_healthy
     stdin_open: true
     tty: true
-    # Keep container alive for interactive use (exec into it with: make guppy)
+    # Keep container alive for interactive use (exec into it with: make shell-guppy)
     entrypoint: ["sleep", "infinity"]
     restart: unless-stopped
     networks:

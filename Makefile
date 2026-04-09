@@ -39,12 +39,12 @@ help:
 	@echo "  make fresh     Nuke + rebuild + start (DESTROYS EVERYTHING, starts fresh)"
 	@echo ""
 	@echo "Development:"
-	@echo "  make pull      Pull latest pre-built images"
-	@echo "  make build     Build all Docker images"
-	@echo "  make regen     Regenerate keys and proofs (requires restart)"
-	@echo "  make logs      Follow all service logs"
-	@echo "  make status    Show service status"
-	@echo "  make guppy     Open shell in guppy container"
+	@echo "  make pull          Pull latest pre-built images"
+	@echo "  make build         Build all Docker images"
+	@echo "  make regen         Regenerate keys and proofs (requires restart)"
+	@echo "  make logs          Follow all service logs"
+	@echo "  make status        Show service status"
+	@echo "  make shell-guppy   Open shell in guppy container"
 	@echo ""
 	@echo "Telemetry:"
 	@echo "  make up-telemetry       Start with observability stack (Grafana, Prometheus, Tempo)"
@@ -145,9 +145,9 @@ fresh:
 	@echo "Fresh deployment complete!"
 	@echo ""
 	@echo "Next steps:"
-	@echo "  make shell-guppy           Open guppy shell"
-	@echo "  guppy login EMAIL    Create account"
-	@echo "  guppy space generate Create a space"
+	@echo "  make shell-guppy       Open guppy shell"
+	@echo "  guppy login EMAIL      Create account"
+	@echo "  guppy space generate   Create a space"
 
 # Regenerate keys and proofs (requires service restart to take effect)
 regen:
@@ -183,6 +183,10 @@ shell-guppy:
 # Shell into piri container
 shell-piri:
 	$(DOCKER) compose exec piri sh
+
+# Shell into upload container
+shell-upload:
+	$(DOCKER) compose exec upload bash
 
 # Start with telemetry stack (Grafana, Prometheus, Tempo, OTEL Collector)
 up-telemetry:

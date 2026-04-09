@@ -17,11 +17,11 @@ services:
       - |
         if [ -f /data/config ]; then
           echo "IPNI config exists, skipping init"
-          exit 0
+        else
+          echo "Initializing IPNI..."
+          /usr/local/bin/storetheindex init
+          chown -R 65532:65532 /data
         fi
-        echo "Initializing IPNI..."
-        /usr/local/bin/storetheindex init
-        chown -R 65532:65532 /data
     environment:
       - STORETHEINDEX_PATH=/data
     volumes:
