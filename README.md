@@ -102,6 +102,8 @@ flowchart TB
 
     piri --> signing
     piri --> ipni
+    piri --> delegator
+    piri --> indexer
     signing --> blockchain
 
     delegator --> dynamodb
