@@ -54,6 +54,7 @@ You now have content stored on your local Storacha network, complete with blockc
 |---------|------|--------------|
 | blockchain | 8545 | Local EVM (Anvil) with PDP smart contracts |
 | dynamodb-local | 8000 | State persistence for services |
+| minio | 9010 | S3-compatibe storage |
 | redis | 6379 | Cache backend for indexer |
 | signing-service | 7446 | Signs PDP blockchain operations |
 | delegator | 8081 | UCAN delegation service |
@@ -62,6 +63,7 @@ You now have content stored on your local Storacha network, complete with blockc
 | piri | 4000 | Storage node with PDP proofs |
 | upload | 8080 | Upload orchestration service |
 | guppy | — | CLI client for uploads (no exposed port) |
+| smtp4dev | 2525 | SMTP server |
 
 ## Architecture
 
@@ -75,15 +77,17 @@ flowchart TB
         upload["upload :8080"]
         piri["piri :4000"]
         indexer["indexer :9000"]
+        signing["signing-service :7446"]
+        delegator["delegator :8081"]
     end
 
     subgraph Infrastructure
         blockchain["blockchain :8545"]
-        signing["signing-service :7446"]
-        delegator["delegator :8081"]
         ipni["ipni :3000"]
         redis["redis :6379"]
         dynamodb["dynamodb-local :8000"]
+        minio["minio :9010"]
+        email["smtp4dev :2525"]
     end
 
     guppy --> upload
@@ -92,6 +96,9 @@ flowchart TB
 
     upload --> piri
     upload --> indexer
+    upload --> minio
+    upload --> dynamodb
+    upload --> email
 
     piri --> signing
     piri --> ipni
