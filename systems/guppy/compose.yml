@@ -11,8 +11,6 @@ services:
     depends_on:
       upload:
         condition: service_healthy
-      piri:
-        condition: service_healthy
     stdin_open: true
     tty: true
     # Keep container alive for interactive use (exec into it with: make shell-guppy)

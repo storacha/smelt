@@ -6,9 +6,11 @@ require (
 	github.com/docker/docker v28.5.1+incompatible
 	github.com/docker/go-connections v0.6.0
 	github.com/lib/pq v0.0.0-20150723085316-0dad96c0b94f
+	github.com/spf13/cobra v1.10.1
 	github.com/storacha/go-ucanto v0.7.2
 	github.com/testcontainers/testcontainers-go v0.40.0
 	github.com/testcontainers/testcontainers-go/modules/compose v0.40.0
+	gopkg.in/yaml.v3 v3.0.1
 )
 
 require (
@@ -178,7 +180,6 @@ require (
 	github.com/sirupsen/logrus v1.9.3 // indirect
 	github.com/skratchdot/open-golang v0.0.0-20200116055534-eef842397966 // indirect
 	github.com/spaolacci/murmur3 v1.1.0 // indirect
-	github.com/spf13/cobra v1.10.1 // indirect
 	github.com/spf13/pflag v1.0.10 // indirect
 	github.com/stretchr/testify v1.11.1 // indirect
 	github.com/theupdateframework/notary v0.7.0 // indirect
@@ -230,7 +231,6 @@ require (
 	gopkg.in/evanphx/json-patch.v4 v4.12.0 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/ini.v1 v1.67.0 // indirect
-	gopkg.in/yaml.v3 v3.0.1 // indirect
 	k8s.io/api v0.32.3 // indirect
 	k8s.io/apimachinery v0.32.3 // indirect
 	k8s.io/client-go v0.32.3 // indirect

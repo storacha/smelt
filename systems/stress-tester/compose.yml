@@ -22,8 +22,6 @@ services:
     depends_on:
       upload:
         condition: service_healthy
-      piri:
-        condition: service_healthy
     networks:
       - storacha-network
     healthcheck:

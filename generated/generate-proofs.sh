@@ -5,7 +5,7 @@
 # - indexing-service-proof: indexer delegates claim/cache to delegator
 #
 # Prerequisites:
-# - Keys must exist in generated/keys/ (run generate-keys.sh first)
+# - Keys must exist in generated/keys/ (run 'make generate' first)
 # - mkdelegation CLI must be installed (go install github.com/storacha/go-mkdelegation@latest)
 #
 # Usage: ./generate-proofs.sh [--force]
@@ -34,7 +34,7 @@ check_key() {
     local key_file="$1"
     if [[ ! -f "$key_file" ]]; then
         echo "Error: Required key file not found: $key_file"
-        echo "Run generate-keys.sh first"
+        echo "Run 'make generate' first"
         exit 1
     fi
 }
@@ -48,7 +48,7 @@ mkdir -p "$PROOFS_DIR"
 check_key "$KEYS_DIR/indexer.pem"
 check_key "$KEYS_DIR/delegator.pem"
 check_key "$KEYS_DIR/etracker.pem"
-check_key "$KEYS_DIR/piri.pem"
+# Per-node piri keys (piri-0.pem, piri-1.pem, ...) are checked by the loop below.
 
 # The delegator identifies as did:web:delegator when signing delegations to providers.
 # The proofs must have audience=did:web:delegator so the UCAN chain is valid.
@@ -103,20 +103,33 @@ else
     echo "  [new] egress-tracking-proof.txt"
 fi
 
-# Generate piri proof (piri → upload, blob/allocate, blob/accept, blob/replica/allocate, pdp/info capability)
-PIRI_PROOF_FILE="$PROOFS_DIR/piri-proof.txt"
-if [[ -f "$PIRI_PROOF_FILE" && "$FORCE" != "--force" ]]; then
+# Generate per-node piri proofs (piri-N → upload, blob/* + pdp/info capabilities).
+# Loops over every piri-{N}.pem emitted by `smelt generate`, producing one
+# delegation per node at $PROOFS_DIR/piri-{N}-proof.txt. Upload's post_start.sh
+# consumes these to register each node as a separate storage provider.
+PIRI_KEYS_FOUND=0
+for PIRI_KEY in "$KEYS_DIR"/piri-*.pem; do
+    [[ -f "$PIRI_KEY" ]] || continue
+    NODE_NAME=$(basename "$PIRI_KEY" .pem)
+    # Accept only piri-<N> (skip things like piri-signing-service.pem).
+    [[ "$NODE_NAME" =~ ^piri-[0-9]+$ ]] || continue
+    PIRI_KEYS_FOUND=1
+
+    PIRI_PROOF_FILE="$PROOFS_DIR/${NODE_NAME}-proof.txt"
+    if [[ -f "$PIRI_PROOF_FILE" && "$FORCE" != "--force" ]]; then
+        echo ""
+        echo "[skip] ${NODE_NAME}-proof.txt already exists"
+        continue
+    fi
+
     echo ""
-    echo "[skip] piri-proof.txt already exists"
-else
-    echo ""
-    echo "Generating piri proof..."
-    echo "  Issuer: did:key:piri (key: piri.pem)"
+    echo "Generating ${NODE_NAME} proof..."
+    echo "  Issuer: ${NODE_NAME}.pem"
     echo "  Audience: $UPLOAD_WEB_DID"
     echo "  Capabilities: blob/allocate, blob/accept, blob/replica/allocate, pdp/info"
 
     "$MKDELEGATION" gen \
-        --issuer-private-key-file "$KEYS_DIR/piri.pem" \
+        --issuer-private-key-file "$PIRI_KEY" \
         --audience-did-key "$UPLOAD_WEB_DID" \
         --capabilities "blob/allocate" \
         --capabilities "blob/accept" \
@@ -125,7 +138,13 @@ else
         --skip-capability-validation \
         > "$PIRI_PROOF_FILE"
 
-    echo "  [new] piri-proof.txt"
+    echo "  [new] ${NODE_NAME}-proof.txt"
+done
+
+if [[ "$PIRI_KEYS_FOUND" -eq 0 ]]; then
+    echo ""
+    echo "WARNING: No piri-N.pem keys found in $KEYS_DIR — skipping piri proofs."
+    echo "         Run 'make generate' to create them."
 fi
 
 echo ""
