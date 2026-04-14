@@ -1,0 +1,13 @@
+version: 1
+piri:
+  nodes:
+    - storage:
+        db: sqlite # or 'postgres'
+        blob: filesystem # or 'minio'
+    # supports a total of 9 piri nodes, 9 due to anvil wallet limit
+    #- storage:
+    #    db: sqlite
+    #    blob: filesystem
+    #- storage:
+    #    db: sqlite
+    #    blob: filesystem

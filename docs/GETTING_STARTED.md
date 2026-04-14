@@ -38,13 +38,16 @@ If `docker compose` fails but `docker-compose` works, you have the legacy versio
 
 ### Go 1.22+
 
-Go is required for generating UCAN delegation proofs. The setup process installs the `mkdelegation` tool, which creates the cryptographic proofs that allow services to authorize each other.
+Go is required for two things:
+
+1. **`smelt generate`** — the multi-piri manifest generator that reads `smelt.yml` and produces `generated/compose/piri.yml` plus all service keys. Runs automatically via `make generate` (and transitively from `make up`, `make init`, `make fresh`).
+2. **`mkdelegation`** — creates the UCAN delegation proofs that let services authorize each other. Installed on first `make init`.
 
 ```bash
 go version    # Should show "go1.22" or higher
 ```
 
-If Go is unavailable, the setup will warn you and skip proof generation. The network will start, but certain service-to-service authorization flows may fail.
+If Go is unavailable, `make generate` will fail outright (it's required) and `mkdelegation` will be skipped with a warning. Install Go before proceeding.
 
 ### jq
 
@@ -88,6 +91,27 @@ That's it. The actual initialization happens when you first start the network.
 
 ---
 
+## Configuring Piri Nodes (Optional)
+
+Smelt ships with a single-piri default, so you can skip this section on your first run. When you want to explore multi-provider scenarios, edit `smelt.yml` at the repo root:
+
+```yaml
+version: 1
+piri:
+  nodes:
+    - storage: { db: sqlite,   blob: filesystem }  # piri-0 (default)
+    # Uncomment additional nodes to run multi-provider setups:
+    # - storage: { db: postgres, blob: filesystem }  # piri-1
+    # - storage: { db: sqlite,   blob: s3 }          # piri-2
+    # - storage: { db: postgres, blob: s3 }          # piri-3
+```
+
+Each entry becomes a `piri-{N}` container exposed on host port `4000 + N`. You can mix and match storage backends per node. Up to 9 nodes total (limited by Anvil's pre-funded accounts). Shared `piri-postgres` and `piri-minio` services are included automatically when any node uses those backends.
+
+See [docs/MULTI_PIRI.md](MULTI_PIRI.md) for the full schema, database namespacing, hot-add/remove behavior, and Anvil wallet mapping. If you edit `smelt.yml` while the network is running, `make up` picks up the change (adding new nodes and `--remove-orphans` removing deleted ones).
+
+---
+
 ## Understanding the Setup Process
 
 When you run `make up` for the first time (or `make init` explicitly), the system prepares the environment through several distinct phases. Understanding these phases helps when something goes wrong—and something always goes wrong eventually.
@@ -108,29 +132,32 @@ These directories are gitignored. Your keys are local to your machine.
 
 #### Step 2: Generate Ed25519 Keypairs
 
-The script generates PEM-format Ed25519 keys for each service that needs a cryptographic identity:
+`smelt generate` (invoked by `make generate`) produces PEM-format Ed25519 keys for every service that needs a cryptographic identity:
 
 | Key File | Service | Purpose |
 |----------|---------|---------|
-| `piri.pem` | Piri storage node | Signs storage commitments and content claims |
+| `piri-0.pem` | First piri node | Signs storage commitments and content claims |
+| `piri-{N}.pem` | Additional piri nodes declared in `smelt.yml` | Per-node identities (up to piri-8) |
 | `upload.pem` | Upload service | Signs upload coordination messages |
 | `indexer.pem` | Indexer | Signs index claims |
 | `delegator.pem` | Delegator | Issues capability delegations |
 | `signing-service.pem` | Signing service | Signs PDP blockchain operations |
 | `etracker.pem` | Egress tracker | Signs egress tracking claims |
 
-Each key generates a corresponding `did:key` identifier. For example, the piri key might produce `did:key:z6MkfYoQ6dppqssZ9qHF6PbBzCjoS1wWg15GYxNaMiLZn5RD`. These identifiers appear throughout logs and error messages.
+Each key maps to a `did:key` identifier. For example, `piri-0.pem` might produce `did:key:z6MkfYoQ6dppqssZ9qHF6PbBzCjoS1wWg15GYxNaMiLZn5RD`. These identifiers appear throughout logs and error messages. Key generation is idempotent — existing keys are preserved on subsequent runs, so adding a node to `smelt.yml` allocates a new key without disturbing existing ones.
 
-#### Step 3: Extract EVM Keys from Blockchain State
+#### Step 3: Assign EVM Wallets from Anvil
 
-The local blockchain (Anvil) ships with pre-funded accounts. The setup extracts two keys:
+Anvil ships with 10 deterministic pre-funded accounts. `smelt generate` assigns them to services:
 
-| Key File | Source | Purpose |
-|----------|--------|---------|
-| `payer-key.hex` | `.payer.privateKey` | Pays gas fees for PDP operations |
-| `owner-wallet.hex` | `.deployer.privateKey` | Registers piri as a storage provider |
+| Key File | Anvil Account | Purpose |
+|----------|---------------|---------|
+| `payer-key.hex` | Account 1 | Signing-service payer (pays gas for PDP operations) |
+| `piri-0-wallet.hex` | Account 0 (deployer) | First piri node's on-chain identity |
+| `piri-1-wallet.hex` | Account 2 | Second piri node (if declared) |
+| `piri-{N}-wallet.hex` | Account N + 1 | N-th piri node (for N ≥ 1); max is piri-8 → account 9 |
 
-These keys are extracted from `systems/blockchain/state/deployed-addresses.json`, which contains the addresses and keys used when the smart contracts were originally deployed.
+Wallets are generated alongside the corresponding Ed25519 keys, so adding nodes in `smelt.yml` allocates new accounts sequentially. Account 1 is reserved for the payer, which is why piri-1 uses account 2, not account 1.
 
 #### Step 4: Install mkdelegation Tool
 
@@ -202,16 +229,19 @@ The startup sequence, roughly:
 8. **upload** waits for indexer, dynamodb-local, and piri
 9. **guppy** waits for upload and piri
 
-### Piri's Two-Phase Initialization
+### Piri's Multi-Step Initialization
 
-Piri requires special attention. Unlike other services that simply start, piri runs a multi-step initialization:
+Each piri node declared in `smelt.yml` (default 1, up to 9) runs its own multi-step initialization on first start:
 
-1. **Extract DID**: Parse the Ed25519 key to determine piri's `did:key` identity
+1. **Extract DID**: Parse the node's `piri-{N}.pem` key to determine its `did:key` identity
 2. **Register with allow list**: Add the DID to the delegator's DynamoDB allow list
-3. **Initialize piri**: Register with the blockchain, obtain delegations from the delegator
-4. **Start server**: Begin accepting storage requests
+3. **Register on-chain**: Register as a storage provider with the PDP contracts via signing-service
+4. **Create proof set**: Submit a create-proof-set transaction and wait for confirmation
+5. **Start server**: Begin accepting storage requests on port `3000` (mapped to host `4000 + N`)
 
-This initialization takes 1-3 minutes on first run. The entrypoint script (`systems/piri/entrypoint.sh`) orchestrates this process.
+All nodes initialize concurrently. First-time setup takes 1–3 minutes per node (with some amortization across parallel startup). Monitor a specific node with `docker compose logs -f piri-{N}`.
+
+The entrypoint script (`systems/piri/entrypoint.sh`) is shared by every piri container; each container reads its own key, wallet, and DB/S3 config via environment variables injected by `generated/compose/piri.yml`.
 
 ### Expected Startup Time
 
@@ -712,5 +742,5 @@ For deep protocol understanding:
 | Delegator | 8081 | `curl localhost:8081/healthcheck` |
 | IPNI | 3000 | `curl localhost:3000/health` |
 | Indexer | 9000 | `curl localhost:9000/` |
-| Piri | 4000 | `curl localhost:4000/` |
+| Piri | 4000+N | `curl localhost:4000/` (piri-0; each additional node in `smelt.yml` adds 1) |
 | Upload | 8080 | `curl localhost:8080/health` |

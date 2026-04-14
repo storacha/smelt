@@ -1,6 +1,17 @@
 package stack
 
-import "time"
+import (
+	"fmt"
+	"time"
+
+	"github.com/storacha/smelt/pkg/manifest"
+)
+
+// PiriNodeConfig configures a single piri node in the test stack.
+type PiriNodeConfig struct {
+	Postgres bool // Use PostgreSQL for this node
+	S3       bool // Use S3 for this node
+}
 
 // config holds the configuration for a Stack.
 type config struct {
@@ -17,9 +28,12 @@ type config struct {
 	// Binary overrides (mount local binary instead of using image's binary)
 	piriBinaryPath string
 
-	// Piri storage profiles
+	// Piri storage profiles (legacy single-node compat)
 	piriPostgres bool // Use PostgreSQL instead of SQLite
 	piriS3       bool // Use S3 (MinIO) instead of filesystem
+
+	// Multi-piri configuration (takes precedence over piriPostgres/piriS3 when set)
+	piriNodes []PiriNodeConfig
 
 	// Stack configuration
 	timeout       time.Duration
@@ -61,27 +75,42 @@ func (c *config) buildEnv() map[string]string {
 		env["IPNI_IMAGE"] = c.ipniImage
 	}
 
-	// Piri storage backend configuration
-	if c.piriPostgres {
-		env["PIRI_DB_BACKEND"] = "postgres"
-	}
-	if c.piriS3 {
-		env["PIRI_BLOB_BACKEND"] = "s3"
-	}
-
 	return env
 }
 
-// buildProfiles returns the list of Docker Compose profiles to enable.
-func (c *config) buildProfiles() []string {
-	var profiles []string
-	if c.piriPostgres {
-		profiles = append(profiles, "piri-postgres")
+// resolveNodes resolves the piri node configuration into manifest.ResolvedPiriNode list.
+func (c *config) resolveNodes() []manifest.ResolvedPiriNode {
+	nodes := c.piriNodes
+
+	// Legacy backward compat: if piriNodes is nil, create a single node
+	// using the legacy piriPostgres/piriS3 flags.
+	if nodes == nil {
+		nodes = []PiriNodeConfig{{
+			Postgres: c.piriPostgres,
+			S3:       c.piriS3,
+		}}
 	}
-	if c.piriS3 {
-		profiles = append(profiles, "piri-s3")
+
+	resolved := make([]manifest.ResolvedPiriNode, len(nodes))
+	for i, n := range nodes {
+		db := manifest.DBSQLite
+		if n.Postgres {
+			db = manifest.DBPostgres
+		}
+		blob := manifest.BlobFS
+		if n.S3 {
+			blob = manifest.BlobS3
+		}
+		resolved[i] = manifest.ResolvedPiriNode{
+			Name:  fmt.Sprintf("piri-%d", i),
+			Index: i,
+			Storage: manifest.StorageSpec{
+				DB:   db,
+				Blob: blob,
+			},
+		}
 	}
-	return profiles
+	return resolved
 }
 
 // Option configures a Stack.
@@ -194,5 +223,30 @@ func WithPiriPostgres() Option {
 func WithPiriS3() Option {
 	return func(c *config) {
 		c.piriS3 = true
+	}
+}
+
+// WithPiriCount configures N identical piri nodes with default storage settings.
+//
+// Example:
+//
+//	s := stack.MustNewStack(t, stack.WithPiriCount(3))
+func WithPiriCount(n int) Option {
+	return func(c *config) {
+		c.piriNodes = make([]PiriNodeConfig, n)
+	}
+}
+
+// WithPiriNodes configures specific piri nodes with individual settings.
+//
+// Example:
+//
+//	s := stack.MustNewStack(t, stack.WithPiriNodes(
+//	    stack.PiriNodeConfig{Postgres: true, S3: true},
+//	    stack.PiriNodeConfig{},
+//	))
+func WithPiriNodes(nodes ...PiriNodeConfig) Option {
+	return func(c *config) {
+		c.piriNodes = nodes
 	}
 }

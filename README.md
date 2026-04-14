@@ -9,7 +9,7 @@ Smelt is a Docker Compose environment that runs every service in the Storacha di
 ### Prerequisites
 
 - Docker and Docker Compose
-- Go 1.22+ (for key and proof generation)
+- Go 1.22+ (required for `smelt generate`, the multi-piri manifest generator, and for UCAN delegation proof generation)
 
 ### Start the Network
 
@@ -65,7 +65,7 @@ You now have content stored on your local Storacha network, complete with blockc
 | delegator | 8081 | UCAN delegation service |
 | ipni | 3000, 3002, 3003 | Content discovery indexer |
 | indexer | 9000 | Content claims cache |
-| piri | 4000 | Storage node with PDP proofs |
+| piri-{N} | 4000+N | Storage node(s) with PDP proofs; N declared in `smelt.yml` (default 1, max 9) |
 | upload | 8080 | Upload orchestration service |
 | guppy | — | CLI client for uploads (no exposed port) |
 | smtp4dev | 2525 | SMTP server |
@@ -123,7 +123,8 @@ flowchart TB
 
 | Command | What It Does |
 |---------|--------------|
-| `make up` | Start the network (runs init automatically if needed) |
+| `make up` | Start the network (runs init and regenerates compose if needed) |
+| `make generate` | Regenerate compose files and keys from `smelt.yml` (no container changes) |
 | `make down` | Stop the network (data preserved) |
 | `make restart` | Stop and start all services |
 | `make fresh` | Delete everything and start over |
@@ -135,6 +136,8 @@ Run `make help` for the complete list.
 
 ## Where to Go Next
 
+- **[Getting Started](docs/GETTING_STARTED.md)** — First-time setup, key generation, and upload walkthrough
+- **[Multi-Piri Configuration](docs/MULTI_PIRI.md)** — Running multiple piri nodes via `smelt.yml`
 - **[Architecture Guide](docs/ARCHITECTURE.md)** — How the services connect and why
 - **[Troubleshooting](docs/TROUBLESHOOTING.md)** — When things go wrong (they will)
 - **[Extending Smelt](docs/EXTENDING.md)** — Adding services or modifying the environment

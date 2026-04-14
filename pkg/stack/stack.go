@@ -1,14 +1,14 @@
-// Package smeltery provides a simple API for spinning up the complete Storacha
+// Package stack provides a simple API for spinning up the complete Storacha
 // network in Go tests using testcontainers-go.
 //
 // Example usage:
 //
 //	func TestUploadFlow(t *testing.T) {
-//	    stack := smeltery.MustNewStack(t,
-//	        smeltery.WithPiriImage("my-piri:test"),
+//	    s := stack.MustNewStack(t,
+//	        stack.WithPiriImage("my-piri:test"),
 //	    )
 //
-//	    resp, _ := http.Get(stack.PiriEndpoint() + "/readyz")
+//	    resp, _ := http.Get(s.PiriEndpoint() + "/readyz")
 //	    assert.Equal(t, 200, resp.StatusCode)
 //	}
 package stack
@@ -27,14 +27,18 @@ import (
 	_ "github.com/lib/pq" // postgres driver for wait.ForSQL
 	"github.com/testcontainers/testcontainers-go/modules/compose"
 	"github.com/testcontainers/testcontainers-go/wait"
+
+	"github.com/storacha/smelt/pkg/generate"
+	"github.com/storacha/smelt/pkg/manifest"
 )
 
 // Stack represents a running Storacha network.
 type Stack struct {
-	t       *testing.T
-	compose compose.ComposeStack
-	tempDir string
-	cfg     *config
+	t         *testing.T
+	compose   compose.ComposeStack
+	tempDir   string
+	cfg       *config
+	piriNodes []manifest.ResolvedPiriNode
 }
 
 // NewStack creates and starts a complete Storacha network.
@@ -51,13 +55,29 @@ func NewStack(ctx context.Context, t *testing.T, opts ...Option) (*Stack, error)
 		return nil, fmt.Errorf("extract files: %w", err)
 	}
 
-	// 2. Generate keys (Ed25519 for services, EVM keys from blockchain state)
-	if err := generateKeys(tempDir); err != nil {
+	// 2. Resolve piri node configuration and generate compose + keys.
+	resolvedNodes := cfg.resolveNodes()
+
+	keysDir := filepath.Join(tempDir, "generated", "keys")
+	if err := generate.GenerateKeys(keysDir, resolvedNodes, false); err != nil {
 		return nil, fmt.Errorf("generate keys: %w", err)
 	}
 
-	// 3. Generate UCAN delegation proofs
-	if err := generateProofs(tempDir); err != nil {
+	// Generate piri compose YAML.
+	piriYAML, err := generate.GeneratePiriCompose(resolvedNodes)
+	if err != nil {
+		return nil, fmt.Errorf("generate piri compose: %w", err)
+	}
+	composeDir := filepath.Join(tempDir, "generated", "compose")
+	if err := os.MkdirAll(composeDir, 0755); err != nil {
+		return nil, fmt.Errorf("create compose dir: %w", err)
+	}
+	if err := os.WriteFile(filepath.Join(composeDir, "piri.yml"), piriYAML, 0644); err != nil {
+		return nil, fmt.Errorf("write piri compose: %w", err)
+	}
+
+	// 3. Generate UCAN delegation proofs (per-node piri → upload + static indexer/etracker)
+	if err := generateProofs(tempDir, resolvedNodes); err != nil {
 		return nil, fmt.Errorf("generate proofs: %w", err)
 	}
 
@@ -80,7 +100,7 @@ func NewStack(ctx context.Context, t *testing.T, opts ...Option) (*Stack, error)
 			return nil, fmt.Errorf("piri binary not found at %s: %w", cfg.piriBinaryPath, err)
 		}
 
-		overridePath, err := generateBinaryOverride(tempDir, cfg)
+		overridePath, err := generateBinaryOverride(tempDir, cfg, resolvedNodes)
 		if err != nil {
 			return nil, fmt.Errorf("generate binary override: %w", err)
 		}
@@ -92,12 +112,6 @@ func NewStack(ctx context.Context, t *testing.T, opts ...Option) (*Stack, error)
 	composeOpts := []compose.ComposeStackOption{
 		compose.StackIdentifier("smeltery-" + sanitizeTestName(t.Name())),
 		compose.WithStackFiles(composeFiles...),
-	}
-
-	// Add profiles if any are enabled (e.g., piri-postgres, piri-s3)
-	if profiles := cfg.buildProfiles(); len(profiles) > 0 {
-		composeOpts = append(composeOpts, compose.WithProfiles(profiles...))
-		t.Logf("smeltery: enabling profiles: %v", profiles)
 	}
 
 	composeStack, err := compose.NewDockerComposeWith(composeOpts...)
@@ -121,21 +135,33 @@ func NewStack(ctx context.Context, t *testing.T, opts ...Option) (*Stack, error)
 		WaitForService("indexer", wait.ForHTTP("/").WithPort("80/tcp").WithStartupTimeout(2*time.Minute)).
 		WaitForService("delegator", wait.ForHTTP("/healthcheck").WithPort("80/tcp").WithStartupTimeout(2*time.Minute))
 
-	// Add wait strategies for piri storage backend services (must be ready before piri)
-	if cfg.piriPostgres {
+	// Add wait strategies for shared piri storage backend services
+	needsPostgres := false
+	needsS3 := false
+	for _, node := range resolvedNodes {
+		if node.Storage.DB == manifest.DBPostgres {
+			needsPostgres = true
+		}
+		if node.Storage.Blob == manifest.BlobS3 {
+			needsS3 = true
+		}
+	}
+	if needsPostgres {
 		waitStack = waitStack.WaitForService("piri-postgres",
 			wait.ForSQL("5432/tcp", "postgres", func(host string, port nat.Port) string {
 				return fmt.Sprintf("postgres://piri:piri@%s:%s/piri?sslmode=disable", host, port.Port())
 			}).WithStartupTimeout(1*time.Minute))
 	}
-	if cfg.piriS3 {
+	if needsS3 {
 		waitStack = waitStack.WaitForService("piri-minio",
 			wait.ForHTTP("/minio/health/ready").WithPort("9000/tcp").WithStartupTimeout(1*time.Minute))
 	}
 
-	// Wait for piri last (depends on storage backends)
-	waitStack = waitStack.WaitForService("piri",
-		wait.ForHTTP("/readyz").WithPort("3000/tcp").WithStartupTimeout(3*time.Minute))
+	// Wait for all piri nodes
+	for _, node := range resolvedNodes {
+		waitStack = waitStack.WaitForService(node.Name,
+			wait.ForHTTP("/readyz").WithPort("3000/tcp").WithStartupTimeout(3*time.Minute))
+	}
 
 	err = waitStack.Up(startCtx, compose.Wait(true))
 	if err != nil {
@@ -148,10 +174,11 @@ func NewStack(ctx context.Context, t *testing.T, opts ...Option) (*Stack, error)
 	}
 
 	stack := &Stack{
-		t:       t,
-		compose: composeStack,
-		tempDir: tempDir,
-		cfg:     cfg,
+		t:         t,
+		compose:   composeStack,
+		tempDir:   tempDir,
+		cfg:       cfg,
+		piriNodes: resolvedNodes,
 	}
 
 	// 9. Register cleanup
@@ -245,24 +272,53 @@ func (s *Stack) Close(ctx context.Context) error {
 	return nil
 }
 
+// PiriEndpoint returns the HTTP endpoint for piri-0 (backward compat).
+func (s *Stack) PiriEndpoint() string {
+	return s.PiriEndpointN(0)
+}
+
+// PiriEndpointN returns the HTTP endpoint for the Nth piri node.
+func (s *Stack) PiriEndpointN(index int) string {
+	name := fmt.Sprintf("piri-%d", index)
+	container, err := s.compose.ServiceContainer(context.Background(), name)
+	if err != nil {
+		s.t.Fatalf("get %s container: %v", name, err)
+	}
+	host, err := container.Host(context.Background())
+	if err != nil {
+		s.t.Fatalf("get %s host: %v", name, err)
+	}
+	port, err := container.MappedPort(context.Background(), "3000/tcp")
+	if err != nil {
+		s.t.Fatalf("get %s port: %v", name, err)
+	}
+	return fmt.Sprintf("http://%s:%s", host, port.Port())
+}
+
+// PiriCount returns the number of piri nodes in the stack.
+func (s *Stack) PiriCount() int {
+	return len(s.piriNodes)
+}
+
 // generateBinaryOverride creates a compose override file that mounts local binaries
 // into containers, replacing the binaries from the images.
-func generateBinaryOverride(tempDir string, cfg *config) (string, error) {
+func generateBinaryOverride(tempDir string, cfg *config, nodes []manifest.ResolvedPiriNode) (string, error) {
 	overridePath := filepath.Join(tempDir, "compose.override.yml")
 
 	var content string
 	content = "# Auto-generated binary mount overrides\nservices:\n"
 
 	if cfg.piriBinaryPath != "" {
-		// Use absolute path for the mount
 		absPath, err := filepath.Abs(cfg.piriBinaryPath)
 		if err != nil {
 			return "", fmt.Errorf("get absolute path: %w", err)
 		}
-		content += fmt.Sprintf(`  piri:
+		for _, node := range nodes {
+			content += fmt.Sprintf(`  %s:
     volumes:
       - %s:/usr/bin/piri:ro
-`, absPath)
+`, node.Name, absPath)
+		}
 	}
 
 	if err := os.WriteFile(overridePath, []byte(content), 0644); err != nil {

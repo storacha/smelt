@@ -6,6 +6,8 @@ import (
 	"testing"
 
 	"github.com/storacha/smelt"
+	"github.com/storacha/smelt/pkg/generate"
+	"github.com/storacha/smelt/pkg/manifest"
 )
 
 func TestExtractFiles(t *testing.T) {
@@ -14,13 +16,11 @@ func TestExtractFiles(t *testing.T) {
 		t.Fatalf("extractFiles failed: %v", err)
 	}
 
-	// Verify key files were extracted
 	expectedFiles := []string{
 		"compose.yml",
 		".env",
 		"systems/blockchain/compose.yml",
 		"systems/blockchain/state/deployed-addresses.json",
-		"systems/piri/compose.yml",
 		"systems/piri/entrypoint.sh",
 		"systems/upload/compose.yml",
 		"systems/guppy/compose.yml",
@@ -33,7 +33,6 @@ func TestExtractFiles(t *testing.T) {
 		}
 	}
 
-	// Verify generated directories were created
 	generatedDirs := []string{
 		"generated/keys",
 		"generated/proofs",
@@ -51,50 +50,48 @@ func TestExtractFiles(t *testing.T) {
 }
 
 func TestGenerateKeys(t *testing.T) {
-	tempDir, err := extractFiles(t)
-	if err != nil {
-		t.Fatalf("extractFiles failed: %v", err)
+	keysDir := t.TempDir()
+	nodes := []manifest.ResolvedPiriNode{
+		{Name: "piri-0", Index: 0, Storage: manifest.StorageSpec{DB: "sqlite", Blob: "filesystem"}},
 	}
 
-	err = generateKeys(tempDir)
+	err := generate.GenerateKeys(keysDir, nodes, false)
 	if err != nil {
-		t.Fatalf("generateKeys failed: %v", err)
+		t.Fatalf("GenerateKeys failed: %v", err)
 	}
 
-	keysDir := filepath.Join(tempDir, "generated", "keys")
-
-	// Verify Ed25519 keys were generated
-	for _, svc := range serviceKeys {
-		pemPath := filepath.Join(keysDir, svc+".pem")
-		if _, err := os.Stat(pemPath); os.IsNotExist(err) {
-			t.Errorf("expected key file %s.pem to exist", svc)
-		}
-
-		pubPath := filepath.Join(keysDir, svc+".pub")
-		if _, err := os.Stat(pubPath); os.IsNotExist(err) {
-			t.Errorf("expected public key file %s.pub to exist", svc)
+	// Verify Ed25519 keys were generated for piri-0.
+	for _, ext := range []string{".pem", ".pub"} {
+		path := filepath.Join(keysDir, "piri-0"+ext)
+		if _, err := os.Stat(path); os.IsNotExist(err) {
+			t.Errorf("expected piri-0%s to exist", ext)
 		}
 	}
 
-	// Verify EVM keys were generated
-	evmKeys := []string{"payer-key.hex", "owner-wallet.hex"}
-	for _, k := range evmKeys {
+	// Verify non-piri service keys.
+	for _, svc := range []string{"upload", "indexer", "delegator", "signing-service", "etracker"} {
+		path := filepath.Join(keysDir, svc+".pem")
+		if _, err := os.Stat(path); os.IsNotExist(err) {
+			t.Errorf("expected %s.pem to exist", svc)
+		}
+	}
+
+	// Verify EVM keys.
+	for _, k := range []string{"payer-key.hex", "piri-0-wallet.hex"} {
 		path := filepath.Join(keysDir, k)
 		if _, err := os.Stat(path); os.IsNotExist(err) {
-			t.Errorf("expected EVM key file %s to exist", k)
+			t.Errorf("expected %s to exist", k)
 		}
 	}
 }
 
 func TestEmbeddedFilesExist(t *testing.T) {
-	// Verify we can read key embedded files
 	files := []string{
 		"compose.yml",
 		".env",
 		"systems/blockchain/state/deployed-addresses.json",
-		// Piri profile configs
-		"systems/piri/config/piri-db-postgres.toml",
-		"systems/piri/config/piri-blob-s3.toml",
+		"systems/piri/config/piri-base-config.toml",
+		"systems/piri/config/piri-overrides.toml",
 	}
 
 	for _, f := range files {
@@ -116,13 +113,11 @@ func TestDefaultConfig(t *testing.T) {
 		t.Error("expected default timeout to be non-zero")
 	}
 
-	// Verify buildEnv with no overrides returns empty map
 	env := cfg.buildEnv()
 	if len(env) != 0 {
 		t.Errorf("expected empty env map with no overrides, got %d entries", len(env))
 	}
 
-	// Verify buildEnv with overrides
 	cfg.piriImage = "test-piri:latest"
 	cfg.guppyImage = "test-guppy:latest"
 	env = cfg.buildEnv()
@@ -154,96 +149,62 @@ func TestOptions(t *testing.T) {
 	}
 }
 
-func TestPiriProfileOptions(t *testing.T) {
-	t.Run("WithPiriPostgres", func(t *testing.T) {
+func TestResolveNodes(t *testing.T) {
+	t.Run("LegacySingleNode", func(t *testing.T) {
+		cfg := defaultConfig()
+		nodes := cfg.resolveNodes()
+		if len(nodes) != 1 {
+			t.Fatalf("expected 1 node, got %d", len(nodes))
+		}
+		if nodes[0].Name != "piri-0" {
+			t.Errorf("expected piri-0, got %s", nodes[0].Name)
+		}
+		if nodes[0].Storage.DB != manifest.DBSQLite {
+			t.Errorf("expected sqlite, got %s", nodes[0].Storage.DB)
+		}
+	})
+
+	t.Run("LegacyWithPostgres", func(t *testing.T) {
 		cfg := defaultConfig()
 		WithPiriPostgres()(cfg)
-
-		if !cfg.piriPostgres {
-			t.Error("WithPiriPostgres did not set piriPostgres")
+		nodes := cfg.resolveNodes()
+		if len(nodes) != 1 {
+			t.Fatalf("expected 1 node, got %d", len(nodes))
 		}
-
-		env := cfg.buildEnv()
-		if env["PIRI_DB_BACKEND"] != "postgres" {
-			t.Errorf("expected PIRI_DB_BACKEND=postgres, got %s", env["PIRI_DB_BACKEND"])
-		}
-
-		profiles := cfg.buildProfiles()
-		if len(profiles) != 1 || profiles[0] != "piri-postgres" {
-			t.Errorf("expected profiles=[piri-postgres], got %v", profiles)
+		if nodes[0].Storage.DB != manifest.DBPostgres {
+			t.Errorf("expected postgres, got %s", nodes[0].Storage.DB)
 		}
 	})
 
-	t.Run("WithPiriS3", func(t *testing.T) {
+	t.Run("WithPiriCount", func(t *testing.T) {
 		cfg := defaultConfig()
-		WithPiriS3()(cfg)
-
-		if !cfg.piriS3 {
-			t.Error("WithPiriS3 did not set piriS3")
+		WithPiriCount(3)(cfg)
+		nodes := cfg.resolveNodes()
+		if len(nodes) != 3 {
+			t.Fatalf("expected 3 nodes, got %d", len(nodes))
 		}
-
-		env := cfg.buildEnv()
-		if env["PIRI_BLOB_BACKEND"] != "s3" {
-			t.Errorf("expected PIRI_BLOB_BACKEND=s3, got %s", env["PIRI_BLOB_BACKEND"])
-		}
-
-		profiles := cfg.buildProfiles()
-		if len(profiles) != 1 || profiles[0] != "piri-s3" {
-			t.Errorf("expected profiles=[piri-s3], got %v", profiles)
-		}
-	})
-
-	t.Run("BothProfiles", func(t *testing.T) {
-		cfg := defaultConfig()
-		WithPiriPostgres()(cfg)
-		WithPiriS3()(cfg)
-
-		if !cfg.piriPostgres || !cfg.piriS3 {
-			t.Error("expected both piriPostgres and piriS3 to be set")
-		}
-
-		env := cfg.buildEnv()
-		if env["PIRI_DB_BACKEND"] != "postgres" {
-			t.Errorf("expected PIRI_DB_BACKEND=postgres, got %s", env["PIRI_DB_BACKEND"])
-		}
-		if env["PIRI_BLOB_BACKEND"] != "s3" {
-			t.Errorf("expected PIRI_BLOB_BACKEND=s3, got %s", env["PIRI_BLOB_BACKEND"])
-		}
-
-		profiles := cfg.buildProfiles()
-		if len(profiles) != 2 {
-			t.Errorf("expected 2 profiles, got %d", len(profiles))
-		}
-		// Order matters: postgres first, then s3
-		hasPostgres := false
-		hasS3 := false
-		for _, p := range profiles {
-			if p == "piri-postgres" {
-				hasPostgres = true
-			}
-			if p == "piri-s3" {
-				hasS3 = true
+		for i, n := range nodes {
+			if n.Name != "piri-"+string(rune('0'+i)) {
+				t.Errorf("node %d: expected piri-%d, got %s", i, i, n.Name)
 			}
 		}
-		if !hasPostgres || !hasS3 {
-			t.Errorf("expected profiles to contain piri-postgres and piri-s3, got %v", profiles)
-		}
 	})
 
-	t.Run("NoProfiles", func(t *testing.T) {
+	t.Run("WithPiriNodes", func(t *testing.T) {
 		cfg := defaultConfig()
-
-		profiles := cfg.buildProfiles()
-		if len(profiles) != 0 {
-			t.Errorf("expected no profiles, got %v", profiles)
+		WithPiriNodes(
+			PiriNodeConfig{Postgres: true, S3: true},
+			PiriNodeConfig{},
+		)(cfg)
+		nodes := cfg.resolveNodes()
+		if len(nodes) != 2 {
+			t.Fatalf("expected 2 nodes, got %d", len(nodes))
 		}
-
-		env := cfg.buildEnv()
-		if _, ok := env["PIRI_DB_BACKEND"]; ok {
-			t.Error("PIRI_DB_BACKEND should not be set without profile")
+		if nodes[0].Storage.DB != manifest.DBPostgres || nodes[0].Storage.Blob != manifest.BlobS3 {
+			t.Errorf("node 0: expected postgres/s3, got %s/%s", nodes[0].Storage.DB, nodes[0].Storage.Blob)
 		}
-		if _, ok := env["PIRI_BLOB_BACKEND"]; ok {
-			t.Error("PIRI_BLOB_BACKEND should not be set without profile")
+		if nodes[1].Storage.DB != manifest.DBSQLite || nodes[1].Storage.Blob != manifest.BlobFS {
+			t.Errorf("node 1: expected sqlite/filesystem, got %s/%s", nodes[1].Storage.DB, nodes[1].Storage.Blob)
 		}
 	})
 }

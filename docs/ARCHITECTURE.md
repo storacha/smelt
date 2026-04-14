@@ -67,7 +67,7 @@ flowchart TB
     delegator --> dynamodb["dynamodb-local<br/>:8000"]
     redis --> ipni["ipni<br/>:3000/:3003"]
 
-    signing --> piri["piri<br/>:3000→:4000"]
+    signing --> piri["piri-0 .. piri-N<br/>:3000→:4000+N<br/>(N declared in smelt.yml)"]
     dynamodb --> piri
     ipni --> indexer["indexer<br/>:80→:9000"]
 
@@ -76,6 +76,8 @@ flowchart TB
 
     upload --> guppy["guppy (CLI)"]
 ```
+
+When any piri node declares `db: postgres` or `blob: s3` in `smelt.yml`, the generator also emits shared `piri-postgres` and/or `piri-minio` services that all affected nodes share. See the [Piri Shared Storage Backends](#piri-shared-storage-backends-conditional) section below for details.
 
 ---
 
@@ -224,13 +226,13 @@ pkg/indexerclient/client.go → UCAN client for Indexer communication (assert/in
 
 ---
 
-### 6. Piri - Port 3000 (exposed as 4000)
+### 6. Piri - Port 3000 internal, 4000+N external
 
-**Role**: Storage node implementing the Storacha storage protocol with PDP proofs.
+**Role**: Storage node(s) implementing the Storacha storage protocol with PDP proofs. Smelt runs one or more piri nodes based on `smelt.yml`; each is a separate service (`piri-0`, `piri-1`, ..., up to `piri-8`) with its own key, wallet, data volume, and on-chain provider registration. Host port is `4000 + N` where N is the node index.
 
 **Build context**: `../piri`
 
-**Identity**: `did:key:z6MkfYoQ6dppqssZ9qHF6PbBzCjoS1wWg15GYxNaMiLZn5RD`
+**Identity**: Each node has a unique `did:key:z6Mk...` derived from `generated/keys/piri-{N}.pem`. Per-node identities are what allow multiple piri services to register as distinct providers in the PDP contracts.
 
 **What it does**:
 - Stores blob data on disk
@@ -279,6 +281,18 @@ type AcceptOk struct {
 ```
 
 The `Site` field contains a link to the location claim delegation that tells where the blob can be retrieved.
+
+---
+
+### Piri Shared Storage Backends (Conditional)
+
+When any node in `smelt.yml` declares `db: postgres` or `blob: s3`, the generator adds shared infrastructure services alongside the piri nodes:
+
+**piri-postgres** — A single `postgres:16-alpine` instance shared by all postgres-backed nodes. Each node gets its own logical database (`piri_0`, `piri_1`, ...) to avoid cross-node state collisions. A `piri-postgres-init` sidecar runs `CREATE DATABASE piri_{N}` idempotently on every startup, so hot-adding a new postgres-backed node does not require wiping the volume. The admin/bootstrap database is `postgres` (Postgres's built-in, always-present meta-database), not `piri`.
+
+**piri-minio** — A single MinIO instance shared by all S3-backed nodes. Each node namespaces via a bucket prefix (`piri-0-`, `piri-1-`, ...) injected via the `PIRI_S3_BUCKET_PREFIX` environment variable. Buckets are created by piri itself at startup; no init sidecar is needed.
+
+Both services are only emitted into `generated/compose/piri.yml` when at least one node needs them — an all-sqlite-and-filesystem manifest produces no shared infra. They are reachable by service name (`piri-postgres:5432`, `piri-minio:9000`) from within the compose project.
 
 ---
 
