@@ -13,6 +13,7 @@ receipts_url = "http://upload:80/receipt"
 indexer_id = "did:web:indexer"
 indexer_url = "http://indexer:80"
 authorized_retrievals = true
+insecure_did_resolution = true
 
 [gateway]
 # Gateway settings (if running guppy gateway)
