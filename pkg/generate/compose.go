@@ -113,7 +113,7 @@ func buildPiriService(node manifest.ResolvedPiriNode) ComposeService {
 			"upload":          {Condition: "service_healthy"},
 		},
 		Healthcheck: &Healthcheck{
-			Test:        []string{"CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:3000/readyz"},
+			Test:        []string{"CMD-SHELL", `wget -q -O - http://localhost:3000/readyz | grep -q '"status":\s*"ok"'`},
 			Interval:    "10s",
 			Timeout:     "5s",
 			Retries:     30,
