@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/storacha/smelt/pkg/manifest"
+	"gopkg.in/yaml.v3"
 )
 
 func TestGenerateKeys(t *testing.T) {
@@ -175,6 +176,46 @@ func TestGeneratePiriComposeMultiNode(t *testing.T) {
 	}
 	if !strings.Contains(yaml, "../keys/piri-1-wallet.hex:/keys/owner-wallet.hex:ro") {
 		t.Error("expected piri-1 wallet mount")
+	}
+}
+
+func TestGeneratePiriComposeSerializedStartup(t *testing.T) {
+	nodes := []manifest.ResolvedPiriNode{
+		{Name: "piri-0", Index: 0, Storage: manifest.StorageSpec{DB: "sqlite", Blob: "filesystem"}},
+		{Name: "piri-1", Index: 1, Storage: manifest.StorageSpec{DB: "sqlite", Blob: "filesystem"}},
+		{Name: "piri-2", Index: 2, Storage: manifest.StorageSpec{DB: "sqlite", Blob: "filesystem"}},
+	}
+
+	data, err := GeneratePiriCompose(nodes)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var compose ComposeFile
+	if err := yaml.Unmarshal(data, &compose); err != nil {
+		t.Fatalf("unmarshal generated compose: %v", err)
+	}
+
+	// piri-0 should NOT depend on any other piri node.
+	if dep, ok := compose.Services["piri-0"].DependsOn["piri-0"]; ok {
+		t.Errorf("piri-0 should not depend on itself: %+v", dep)
+	}
+
+	// piri-1 should depend on piri-0 being healthy.
+	if dep, ok := compose.Services["piri-1"].DependsOn["piri-0"]; !ok {
+		t.Error("piri-1 should depend on piri-0")
+	} else if dep.Condition != "service_healthy" {
+		t.Errorf("piri-1 -> piri-0 condition = %q, want service_healthy", dep.Condition)
+	}
+
+	// piri-2 should depend on piri-1 being healthy (chain), not piri-0 directly.
+	if dep, ok := compose.Services["piri-2"].DependsOn["piri-1"]; !ok {
+		t.Error("piri-2 should depend on piri-1")
+	} else if dep.Condition != "service_healthy" {
+		t.Errorf("piri-2 -> piri-1 condition = %q, want service_healthy", dep.Condition)
+	}
+	if _, ok := compose.Services["piri-2"].DependsOn["piri-0"]; ok {
+		t.Error("piri-2 should depend on piri-1 only, not piri-0 directly")
 	}
 }
 

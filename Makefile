@@ -4,7 +4,7 @@ DOCKER := $(shell which docker)
 # Set YES=1 to skip confirmation prompts (e.g., make nuke YES=1)
 YES ?= 0
 
-.PHONY: help generate init up down restart clean nuke fresh logs pull build status guppy regen
+.PHONY: help generate init up down restart clean nuke fresh logs pull build status guppy regen debug-upload
 
 # Default target - show help
 help:
@@ -36,6 +36,9 @@ help:
 	@echo "  make logs          Follow all service logs"
 	@echo "  make status        Show service status"
 	@echo "  make shell-guppy   Open shell in guppy container"
+	@echo ""
+	@echo "Debugging:"
+	@echo "  make debug-upload  Run upload (sprue) under Delve on localhost:2345"
 	@echo ""
 	@echo "Options:"
 	@echo "  YES=1              Skip confirmation prompts (e.g., make nuke YES=1)"
@@ -172,3 +175,15 @@ shell-piri: generated/compose/piri.yml
 # Shell into upload container
 shell-upload:
 	$(DOCKER) compose exec upload bash
+
+# Run upload (sprue) under Delve for remote debugging.
+# See compose.debug.yml for the overlay; attach to localhost:2345.
+debug-upload: generated/compose/piri.yml
+	@if [ ! -d "generated/keys" ] || [ -z "$$(ls -A generated/keys 2>/dev/null)" ]; then \
+		$(MAKE) init; \
+	fi
+	$(DOCKER) compose -f compose.yml -f compose.debug.yml up -d --force-recreate upload
+	@echo ""
+	@echo "upload is running under Delve. Attach to localhost:2345:"
+	@echo "  dlv connect localhost:2345"
+	@echo "  (or VS Code 'Connect to server' / GoLand 'Go Remote')"

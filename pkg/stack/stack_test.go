@@ -150,7 +150,7 @@ func TestOptions(t *testing.T) {
 }
 
 func TestResolveNodes(t *testing.T) {
-	t.Run("LegacySingleNode", func(t *testing.T) {
+	t.Run("DefaultSingleNode", func(t *testing.T) {
 		cfg := defaultConfig()
 		nodes := cfg.resolveNodes()
 		if len(nodes) != 1 {
@@ -161,18 +161,6 @@ func TestResolveNodes(t *testing.T) {
 		}
 		if nodes[0].Storage.DB != manifest.DBSQLite {
 			t.Errorf("expected sqlite, got %s", nodes[0].Storage.DB)
-		}
-	})
-
-	t.Run("LegacyWithPostgres", func(t *testing.T) {
-		cfg := defaultConfig()
-		WithPiriPostgres()(cfg)
-		nodes := cfg.resolveNodes()
-		if len(nodes) != 1 {
-			t.Fatalf("expected 1 node, got %d", len(nodes))
-		}
-		if nodes[0].Storage.DB != manifest.DBPostgres {
-			t.Errorf("expected postgres, got %s", nodes[0].Storage.DB)
 		}
 	})
 

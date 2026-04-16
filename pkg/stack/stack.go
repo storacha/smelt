@@ -8,7 +8,7 @@
 //	        stack.WithPiriImage("my-piri:test"),
 //	    )
 //
-//	    resp, _ := http.Get(s.PiriEndpoint() + "/readyz")
+//	    resp, _ := http.Get(s.PiriEndpointN(0) + "/readyz")
 //	    assert.Equal(t, 200, resp.StatusCode)
 //	}
 package stack
@@ -270,11 +270,6 @@ func (s *Stack) Close(ctx context.Context) error {
 		)
 	}
 	return nil
-}
-
-// PiriEndpoint returns the HTTP endpoint for piri-0 (backward compat).
-func (s *Stack) PiriEndpoint() string {
-	return s.PiriEndpointN(0)
 }
 
 // PiriEndpointN returns the HTTP endpoint for the Nth piri node.

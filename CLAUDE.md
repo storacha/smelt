@@ -138,6 +138,37 @@ docker compose exec piri bash
 docker compose exec upload sh
 ```
 
+### Attaching a Go Debugger
+
+Some services publish `:main-dev` image variants with debug symbols (`-gcflags="all=-N -l"`) and `dlv` baked in. To run one under a debugger:
+
+```bash
+make debug-upload    # runs sprue under dlv, listening on localhost:2345
+```
+
+The service comes up normally (dlv uses `--continue`, so healthchecks and `post_start` hooks behave as usual). Attach a Delve client whenever:
+
+```bash
+dlv connect localhost:2345
+# or VS Code "Connect to server" / GoLand "Go Remote"
+```
+
+**IDE source mapping for sprue**: remote path `/go/src/sprue` maps to your local sprue checkout (e.g. `~/workspace/src/github.com/storacha/sprue`).
+
+To test a locally-built dev image instead of the published `:main-dev`:
+
+```bash
+UPLOAD_DEBUG_IMAGE=sprue:dev make debug-upload
+```
+
+To return a service to normal (non-debug) mode:
+
+```bash
+docker compose up -d --force-recreate upload
+```
+
+**Extending the pattern**: to debug another service, copy the `upload:` block in `compose.debug.yml` and (1) pick the next free debug port (2346, 2347, ...), (2) point `image:` at the service's `:main-dev` variant, (3) replace the binary path and args, and (4) add a matching `make debug-<service>` target. Services with non-trivial entrypoint scripts (e.g. piri's `entrypoint.sh` does DID and delegator registration) need a different strategy — typically teach the upstream entrypoint to `exec dlv ...` when a `DEBUG_DLV=1` env var is set, so the overlay just sets that env var rather than replacing `entrypoint:`.
+
 ### Testing the Upload Flow
 
 The guppy CLI has a specific workflow that must be followed:
@@ -224,12 +255,9 @@ s := stack.MustNewStack(t, stack.WithPiriNodes(
 ))
 
 // Access per-node endpoints
-s.PiriEndpoint()      // piri-0 (backward-compat alias)
+s.PiriEndpointN(0)    // piri-0
 s.PiriEndpointN(1)    // piri-1
 s.PiriCount()         // number of nodes
-
-// Legacy single-node shortcuts (still supported)
-s := stack.MustNewStack(t, stack.WithPiriPostgres(), stack.WithPiriS3())
 ```
 
 ## Service Ports

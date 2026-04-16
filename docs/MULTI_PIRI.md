@@ -172,12 +172,10 @@ s := stack.MustNewStack(t, stack.WithPiriNodes(
 ))
 
 // Access endpoints
-s.PiriEndpoint()     // piri-0 (backward compat)
+s.PiriEndpointN(0)   // piri-0
 s.PiriEndpointN(1)   // piri-1
 s.PiriCount()        // number of nodes
 ```
-
-The existing `WithPiriPostgres()` and `WithPiriS3()` options continue to work for the single-node case via backward-compatible resolution.
 
 ## Limitations
 
@@ -197,8 +195,8 @@ make up
 # Generate without starting
 make generate
 
-# Force-regenerate all keys
-go run ./cmd/smelt generate --force
+# Force-regenerate all keys and proofs
+make regen
 
 # Shell into a specific piri node
 docker compose exec piri-1 sh

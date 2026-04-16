@@ -23,6 +23,14 @@ func GeneratePiriCompose(nodes []manifest.ResolvedPiriNode) ([]byte, error) {
 		svc := buildPiriService(node)
 		compose.Services[node.Name] = svc
 
+		// Serialize startup: each piri-N waits for piri-(N-1) to be healthy before
+		// starting its own init. Avoids a thundering-herd race where concurrent
+		// gas estimation against a shared pending state underestimates gas for the
+		// loser and its createDataSet tx reverts out-of-gas. See storacha/piri#466.
+		if node.Index > 0 {
+			svc.DependsOn[fmt.Sprintf("piri-%d", node.Index-1)] = DependsOnCondition{Condition: "service_healthy"}
+		}
+
 		if node.Storage.DB == manifest.DBPostgres {
 			needsPostgres = true
 			postgresDBs = append(postgresDBs, fmt.Sprintf("piri_%d", node.Index))

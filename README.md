@@ -48,7 +48,7 @@ echo "Hello Storacha" > /tmp/hello.txt
 guppy upload source add did:key:z6Mk... /tmp/hello.txt
 
 # Upload
-guppy upload did:key:z6Mk... /tmp/hello.txt
+guppy upload --replicas=1 did:key:z6Mk... /tmp/hello.txt
 ```
 
 You now have content stored on your local Storacha network, complete with blockchain proofs and content indexing.

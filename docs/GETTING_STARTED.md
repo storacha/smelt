@@ -335,8 +335,10 @@ Guppy automatically selects the newly created space as the current space.
 
 ```bash
 echo "Hello Storacha" > /tmp/hello.txt
-guppy upload /tmp/hello.txt
+guppy upload --replicas=1 /tmp/hello.txt
 ```
+
+Guppy's default replication factor is 3, but Smelt ships with a single piri node, so pass `--replicas=1`. To run without the flag, add more piri nodes in `smelt.yml` (see [Configuring Piri Nodes](#configuring-piri-nodes-optional) above).
 
 **What's happening** (this is the interesting part):
 
@@ -692,7 +694,7 @@ Upload files larger than 1MB to see sharding in action:
 ```bash
 # Inside guppy shell
 dd if=/dev/urandom of=/tmp/large.bin bs=1M count=10
-guppy upload /tmp/large.bin
+guppy upload --replicas=1 /tmp/large.bin
 ```
 
 Watch the logs to see multiple `space/blob/add` invocations as guppy shards the file.

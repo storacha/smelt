@@ -28,11 +28,7 @@ type config struct {
 	// Binary overrides (mount local binary instead of using image's binary)
 	piriBinaryPath string
 
-	// Piri storage profiles (legacy single-node compat)
-	piriPostgres bool // Use PostgreSQL instead of SQLite
-	piriS3       bool // Use S3 (MinIO) instead of filesystem
-
-	// Multi-piri configuration (takes precedence over piriPostgres/piriS3 when set)
+	// Piri node topology. When nil, a single default node is used.
 	piriNodes []PiriNodeConfig
 
 	// Stack configuration
@@ -81,14 +77,8 @@ func (c *config) buildEnv() map[string]string {
 // resolveNodes resolves the piri node configuration into manifest.ResolvedPiriNode list.
 func (c *config) resolveNodes() []manifest.ResolvedPiriNode {
 	nodes := c.piriNodes
-
-	// Legacy backward compat: if piriNodes is nil, create a single node
-	// using the legacy piriPostgres/piriS3 flags.
 	if nodes == nil {
-		nodes = []PiriNodeConfig{{
-			Postgres: c.piriPostgres,
-			S3:       c.piriS3,
-		}}
+		nodes = []PiriNodeConfig{{}}
 	}
 
 	resolved := make([]manifest.ResolvedPiriNode, len(nodes))
@@ -197,32 +187,6 @@ func WithTimeout(d time.Duration) Option {
 func WithKeepOnFailure() Option {
 	return func(c *config) {
 		c.keepOnFailure = true
-	}
-}
-
-// WithPiriPostgres enables the PostgreSQL database backend for piri.
-// This starts an additional piri-postgres service and configures piri to use
-// PostgreSQL instead of the default SQLite database.
-//
-// Example:
-//
-//	s := stack.MustNewStack(t, stack.WithPiriPostgres())
-func WithPiriPostgres() Option {
-	return func(c *config) {
-		c.piriPostgres = true
-	}
-}
-
-// WithPiriS3 enables the S3 (MinIO) blob storage backend for piri.
-// This starts an additional piri-minio service and configures piri to use
-// S3-compatible storage instead of the default filesystem storage.
-//
-// Example:
-//
-//	s := stack.MustNewStack(t, stack.WithPiriS3())
-func WithPiriS3() Option {
-	return func(c *config) {
-		c.piriS3 = true
 	}
 }
 
