@@ -4,21 +4,7 @@ DOCKER := $(shell which docker)
 # Set YES=1 to skip confirmation prompts (e.g., make nuke YES=1)
 YES ?= 0
 
-# Profile support: pass PROFILES="profile1 profile2" to enable profiles
-# Example: make fresh PROFILES="piri-postgres piri-s3"
-PROFILES ?=
-PROFILE_FLAGS := $(foreach p,$(PROFILES),--profile $(p))
-
-# Auto-set environment variables based on profiles
-PROFILE_ENV :=
-ifneq (,$(findstring piri-postgres,$(PROFILES)))
-    PROFILE_ENV += PIRI_DB_BACKEND=postgres
-endif
-ifneq (,$(findstring piri-s3,$(PROFILES)))
-    PROFILE_ENV += PIRI_BLOB_BACKEND=s3
-endif
-
-.PHONY: help init up down restart clean nuke fresh logs pull build status guppy regen up-telemetry grafana telemetry-status stress shell-stress stress-status up-piri-postgres up-piri-s3 up-piri-postgres-s3
+.PHONY: help generate init up down restart clean nuke fresh logs pull build status guppy regen debug-upload
 
 # Default target - show help
 help:
@@ -30,6 +16,7 @@ help:
 	@echo "  make restart   Restart all services"
 	@echo ""
 	@echo "Lifecycle:"
+	@echo "  make generate  Generate compose files and keys from smelt.yml"
 	@echo "  make init      Initialize keys, proofs, and Docker network"
 	@echo "  make up        Start all services"
 	@echo "  make down      Stop all services (preserves data)"
@@ -37,6 +24,10 @@ help:
 	@echo "  make clean     Stop + delete volumes (DESTROYS ALL DATA)"
 	@echo "  make nuke      Stop + delete volumes + keys + images (DESTROYS EVERYTHING)"
 	@echo "  make fresh     Nuke + rebuild + start (DESTROYS EVERYTHING, starts fresh)"
+	@echo ""
+	@echo "Piri Configuration:"
+	@echo "  Edit smelt.yml to configure piri node count and storage backends."
+	@echo "  Run 'make generate' (or 'make up') to apply changes."
 	@echo ""
 	@echo "Development:"
 	@echo "  make pull          Pull latest pre-built images"
@@ -46,46 +37,44 @@ help:
 	@echo "  make status        Show service status"
 	@echo "  make shell-guppy   Open shell in guppy container"
 	@echo ""
-	@echo "Telemetry:"
-	@echo "  make up-telemetry       Start with observability stack (Grafana, Prometheus, Tempo)"
-	@echo "  make grafana            Show Grafana URL and dashboard info"
-	@echo "  make telemetry-status   Show telemetry service status"
-	@echo ""
-	@echo "Stress Testing:"
-	@echo "  make stress             Start services with stress tester"
-	@echo "  make shell-stress       Shell into stress tester container"
-	@echo "  make stress-status      Show stress tester status and metrics"
-	@echo ""
-	@echo "Piri Storage Profiles:"
-	@echo "  make up-piri-postgres      Start with PostgreSQL database backend"
-	@echo "  make up-piri-s3            Start with S3 (MinIO) blob storage"
-	@echo "  make up-piri-postgres-s3   Start with both PostgreSQL and S3"
+	@echo "Debugging:"
+	@echo "  make debug-upload  Run upload (sprue) under Delve on localhost:2345"
 	@echo ""
 	@echo "Options:"
-	@echo "  PROFILES=\"p1 p2\"  Enable profiles (e.g., make fresh PROFILES=\"piri-postgres piri-s3\")"
 	@echo "  YES=1              Skip confirmation prompts (e.g., make nuke YES=1)"
 	@echo ""
 	@echo "Destructive commands (clean, nuke, fresh) require confirmation."
 	@echo ""
 
+# Generate compose files and keys from smelt.yml manifest
+generate:
+	@go run ./cmd/smelt generate
+
+# File target: rebuild the generated piri compose when the manifest or
+# generator source changes. Compose-invoking targets below depend on this
+# so fresh checkouts and post-nuke states regenerate piri.yml on demand.
+generated/compose/piri.yml: smelt.yml $(shell find cmd/smelt pkg/generate pkg/manifest -name '*.go' 2>/dev/null)
+	@go run ./cmd/smelt generate
+
 # Initialize the environment (generate keys, proofs, create network)
-init:
+init: generate
 	@./scripts/init.sh
 
 # Start all services (runs init first if needed)
-# Use PROFILES="profile1 profile2" to enable profiles (e.g., make up PROFILES="piri-postgres")
 up:
 	@if [ ! -d "generated/keys" ] || [ -z "$$(ls -A generated/keys 2>/dev/null)" ]; then \
 		$(MAKE) init; \
+	else \
+		$(MAKE) generate; \
 	fi
-	$(PROFILE_ENV) $(DOCKER) compose $(PROFILE_FLAGS) up -d
+	$(DOCKER) compose up -d --remove-orphans
 	@echo ""
 	@echo "Services starting. Run 'make status' to check health."
 	@echo "Run 'make logs' to follow logs."
 
 # Stop all services (keeps volumes for quick restart)
-down:
-	$(DOCKER) compose --profile telemetry --profile stress --profile piri-postgres --profile piri-s3 down
+down: generated/compose/piri.yml
+	$(DOCKER) compose down --remove-orphans
 	@echo ""
 	@echo "Services stopped. Data preserved in volumes."
 	@echo "Run 'make up' to restart."
@@ -104,10 +93,10 @@ define confirm
 endef
 
 # Stop services and remove volumes (but keep keys/proofs)
-clean:
+clean: generated/compose/piri.yml
 	$(call confirm,STOP all services and DELETE all volumes (Redis cache$(,) IPNI data$(,) etc.))
 	@# Stop all services including those with profiles
-	$(DOCKER) compose --profile telemetry --profile stress --profile piri-postgres --profile piri-s3 down -v --remove-orphans
+	$(DOCKER) compose down -v --remove-orphans
 	@# Also remove any dangling volumes from this project
 	$(DOCKER) volume ls -q --filter "name=smelt_" | xargs -r $(DOCKER) volume rm 2>/dev/null || true
 	@echo ""
@@ -115,32 +104,31 @@ clean:
 	@echo "Keys and proofs preserved. Run 'make up' to restart."
 
 # Remove EVERYTHING - volumes, keys, proofs, and built images
-nuke:
+nuke: generated/compose/piri.yml
 	$(call confirm,DELETE everything: containers$(,) volumes$(,) keys$(,) proofs$(,) AND Docker images)
 	@echo "Removing all containers, volumes, keys, proofs, and images..."
 	@# Stop all services including those with profiles
-	$(DOCKER) compose --profile telemetry --profile stress --profile piri-postgres --profile piri-s3 down -v --remove-orphans --rmi local 2>/dev/null || true
+	$(DOCKER) compose down -v --remove-orphans --rmi local 2>/dev/null || true
 	@# Also remove any dangling volumes from this project
 	$(DOCKER) volume ls -q --filter "name=smelt_" | xargs -r $(DOCKER) volume rm 2>/dev/null || true
-	rm -rf generated/keys generated/proofs
+	rm -rf generated/keys generated/proofs generated/compose
 	@echo ""
 	@echo "Everything removed. Run 'make up' or 'make fresh' to start over."
 
 # Complete fresh start - nuke everything, rebuild, and start
-# Use PROFILES="profile1 profile2" to enable profiles (e.g., make fresh PROFILES="piri-postgres piri-s3")
-fresh:
+fresh: generated/compose/piri.yml
 	$(call confirm,DELETE everything and rebuild from scratch)
 	@echo "Removing all containers, volumes, keys, proofs, and images..."
 	@# Stop all services including those with profiles
-	$(DOCKER) compose --profile telemetry --profile stress --profile piri-postgres --profile piri-s3 down -v --remove-orphans --rmi local 2>/dev/null || true
+	$(DOCKER) compose down -v --remove-orphans --rmi local 2>/dev/null || true
 	@# Also remove any dangling volumes from this project
 	$(DOCKER) volume ls -q --filter "name=smelt_" | xargs -r $(DOCKER) volume rm 2>/dev/null || true
-	rm -rf generated/keys generated/proofs
+	rm -rf generated/keys generated/proofs generated/compose
 	@echo ""
 	@echo "Rebuilding and starting fresh..."
 	$(MAKE) init
-	$(DOCKER) compose $(PROFILE_FLAGS) build
-	$(PROFILE_ENV) $(DOCKER) compose $(PROFILE_FLAGS) up -d
+	$(DOCKER) compose build
+	$(DOCKER) compose up -d --remove-orphans
 	@echo ""
 	@echo "Fresh deployment complete!"
 	@echo ""
@@ -152,130 +140,50 @@ fresh:
 # Regenerate keys and proofs (requires service restart to take effect)
 regen:
 	@echo "Regenerating keys and proofs..."
-	./generated/generate-keys.sh --force
+	go run ./cmd/smelt generate --force
 	./generated/generate-proofs.sh --force
 	@echo ""
 	@echo "Keys and proofs regenerated."
 	@echo "Run 'make clean && make up' to restart services with new keys."
 
 # Pull latest pre-built images (ignores failures for local-only images)
-pull:
-	$(DOCKER) compose --profile telemetry --profile stress --profile piri-postgres --profile piri-s3 pull --ignore-pull-failures
+pull: generated/compose/piri.yml
+	$(DOCKER) compose pull --ignore-pull-failures
 
 # Build all images
-build:
-	$(DOCKER) compose --profile telemetry --profile stress --profile piri-postgres --profile piri-s3 build
+build: generated/compose/piri.yml
+	$(DOCKER) compose build
 
 # Follow logs from all services
-logs:
+logs: generated/compose/piri.yml
 	$(DOCKER) compose logs -f
 
 # Show service status
-status:
+status: generated/compose/piri.yml
 	@$(DOCKER) compose ps
 	@echo ""
 	@$(DOCKER) compose ps --format "table {{.Name}}\t{{.Status}}" | grep -E "(healthy|unhealthy|starting)" || true
 
 # Shell into guppy container
-shell-guppy:
+shell-guppy: generated/compose/piri.yml
 	$(DOCKER) compose exec guppy bash
 
-# Shell into piri container
-shell-piri:
-	$(DOCKER) compose exec piri sh
+# Shell into piri-0 container
+shell-piri: generated/compose/piri.yml
+	$(DOCKER) compose exec piri-0 sh
 
 # Shell into upload container
 shell-upload:
 	$(DOCKER) compose exec upload bash
 
-# Start with telemetry stack (Grafana, Prometheus, Tempo, OTEL Collector)
-up-telemetry:
+# Run upload (sprue) under Delve for remote debugging.
+# See compose.debug.yml for the overlay; attach to localhost:2345.
+debug-upload: generated/compose/piri.yml
 	@if [ ! -d "generated/keys" ] || [ -z "$$(ls -A generated/keys 2>/dev/null)" ]; then \
 		$(MAKE) init; \
 	fi
-	@# Start telemetry services first so collectors are ready
-	$(DOCKER) compose --profile telemetry up -d otel-collector prometheus tempo grafana
-	@# Then start core services (they report to otel-collector via config)
-	$(DOCKER) compose up -d
+	$(DOCKER) compose -f compose.yml -f compose.debug.yml up -d --force-recreate upload
 	@echo ""
-	@echo "Services started with telemetry enabled."
-	@echo "Grafana: http://localhost:3001"
-	@echo ""
-	@echo "Run 'make status' to check health."
-	@echo "Run 'make telemetry-status' to check telemetry services."
-
-# Show Grafana URL and info
-grafana:
-	@echo "Grafana: http://localhost:3001"
-	@echo ""
-	@echo "Access: Anonymous admin (no login required)"
-	@echo ""
-	@echo "Dashboards (Smelt folder):"
-	@echo "  - Smelt Overview: System health and telemetry metrics"
-	@echo ""
-	@echo "Explore:"
-	@echo "  - Prometheus: Query metrics"
-	@echo "  - Tempo: Search traces"
-
-# Show telemetry service status
-telemetry-status:
-	@echo "Telemetry Services:"
-	@$(DOCKER) compose --profile telemetry ps --format "table {{.Name}}\t{{.Status}}" 2>/dev/null | grep -E "otel|prometheus|tempo|grafana" || echo "  (no telemetry services running - use 'make up-telemetry')"
-
-# Start services with stress tester
-stress:
-	@if [ ! -d "generated/keys" ] || [ -z "$$(ls -A generated/keys 2>/dev/null)" ]; then \
-		$(MAKE) init; \
-	fi
-	@# Start core services first if not running
-	@$(DOCKER) compose up -d
-	@# Then start stress-tester (uses profile to enable it)
-	$(DOCKER) compose --profile stress up -d stress-tester
-	@echo ""
-	@echo "Stress tester started."
-	@echo "Stress tester metrics: http://localhost:9091/metrics"
-	@echo ""
-	@echo "Run 'make shell-stress' to run tests manually."
-	@echo "Run 'make stress-status' to check stress tester status."
-
-# Shell into stress tester container
-shell-stress:
-	$(DOCKER) compose --profile stress exec stress-tester sh
-
-# Show stress tester status
-stress-status:
-	@echo "Stress Tester Status:"
-	@$(DOCKER) compose --profile stress ps --format "table {{.Name}}\t{{.Status}}" 2>/dev/null | grep -E "stress" || echo "  (stress tester not running - use 'make stress')"
-	@echo ""
-	@echo "Metrics endpoint: http://localhost:9091/metrics"
-	@echo ""
-	@echo "View logs: docker compose logs -f stress-tester"
-
-# Piri with PostgreSQL database
-up-piri-postgres:
-	@if [ ! -d "generated/keys" ] || [ -z "$$(ls -A generated/keys 2>/dev/null)" ]; then \
-		$(MAKE) init; \
-	fi
-	PIRI_DB_BACKEND=postgres $(DOCKER) compose --profile piri-postgres up -d
-	@echo ""
-	@echo "Services started with PostgreSQL database backend for piri."
-
-# Piri with S3 blob storage (MinIO)
-up-piri-s3:
-	@if [ ! -d "generated/keys" ] || [ -z "$$(ls -A generated/keys 2>/dev/null)" ]; then \
-		$(MAKE) init; \
-	fi
-	PIRI_BLOB_BACKEND=s3 $(DOCKER) compose --profile piri-s3 up -d
-	@echo ""
-	@echo "Services started with S3 (MinIO) blob storage for piri."
-	@echo "MinIO Console: http://localhost:9003 (minioadmin/minioadmin)"
-
-# Piri with both PostgreSQL and S3
-up-piri-postgres-s3:
-	@if [ ! -d "generated/keys" ] || [ -z "$$(ls -A generated/keys 2>/dev/null)" ]; then \
-		$(MAKE) init; \
-	fi
-	PIRI_DB_BACKEND=postgres PIRI_BLOB_BACKEND=s3 $(DOCKER) compose --profile piri-postgres --profile piri-s3 up -d
-	@echo ""
-	@echo "Services started with PostgreSQL + S3 backends for piri."
-	@echo "MinIO Console: http://localhost:9003 (minioadmin/minioadmin)"
+	@echo "upload is running under Delve. Attach to localhost:2345:"
+	@echo "  dlv connect localhost:2345"
+	@echo "  (or VS Code 'Connect to server' / GoLand 'Go Remote')"

@@ -15,7 +15,7 @@ include:
   - path: systems/signing-service/compose.yml
   - path: systems/delegator/compose.yml
   - path: systems/indexing/compose.yml
-  - path: systems/piri/compose.yml
+  - path: generated/compose/piri.yml
   - path: systems/upload/compose.yml
   - path: systems/guppy/compose.yml
 

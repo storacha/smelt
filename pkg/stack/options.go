@@ -1,6 +1,17 @@
 package stack
 
-import "time"
+import (
+	"fmt"
+	"time"
+
+	"github.com/storacha/smelt/pkg/manifest"
+)
+
+// PiriNodeConfig configures a single piri node in the test stack.
+type PiriNodeConfig struct {
+	Postgres bool // Use PostgreSQL for this node
+	S3       bool // Use S3 for this node
+}
 
 // config holds the configuration for a Stack.
 type config struct {
@@ -17,9 +28,8 @@ type config struct {
 	// Binary overrides (mount local binary instead of using image's binary)
 	piriBinaryPath string
 
-	// Piri storage profiles
-	piriPostgres bool // Use PostgreSQL instead of SQLite
-	piriS3       bool // Use S3 (MinIO) instead of filesystem
+	// Piri node topology. When nil, a single default node is used.
+	piriNodes []PiriNodeConfig
 
 	// Stack configuration
 	timeout       time.Duration
@@ -61,27 +71,36 @@ func (c *config) buildEnv() map[string]string {
 		env["IPNI_IMAGE"] = c.ipniImage
 	}
 
-	// Piri storage backend configuration
-	if c.piriPostgres {
-		env["PIRI_DB_BACKEND"] = "postgres"
-	}
-	if c.piriS3 {
-		env["PIRI_BLOB_BACKEND"] = "s3"
-	}
-
 	return env
 }
 
-// buildProfiles returns the list of Docker Compose profiles to enable.
-func (c *config) buildProfiles() []string {
-	var profiles []string
-	if c.piriPostgres {
-		profiles = append(profiles, "piri-postgres")
+// resolveNodes resolves the piri node configuration into manifest.ResolvedPiriNode list.
+func (c *config) resolveNodes() []manifest.ResolvedPiriNode {
+	nodes := c.piriNodes
+	if nodes == nil {
+		nodes = []PiriNodeConfig{{}}
 	}
-	if c.piriS3 {
-		profiles = append(profiles, "piri-s3")
+
+	resolved := make([]manifest.ResolvedPiriNode, len(nodes))
+	for i, n := range nodes {
+		db := manifest.DBSQLite
+		if n.Postgres {
+			db = manifest.DBPostgres
+		}
+		blob := manifest.BlobFS
+		if n.S3 {
+			blob = manifest.BlobS3
+		}
+		resolved[i] = manifest.ResolvedPiriNode{
+			Name:  fmt.Sprintf("piri-%d", i),
+			Index: i,
+			Storage: manifest.StorageSpec{
+				DB:   db,
+				Blob: blob,
+			},
+		}
 	}
-	return profiles
+	return resolved
 }
 
 // Option configures a Stack.
@@ -171,28 +190,27 @@ func WithKeepOnFailure() Option {
 	}
 }
 
-// WithPiriPostgres enables the PostgreSQL database backend for piri.
-// This starts an additional piri-postgres service and configures piri to use
-// PostgreSQL instead of the default SQLite database.
+// WithPiriCount configures N identical piri nodes with default storage settings.
 //
 // Example:
 //
-//	s := stack.MustNewStack(t, stack.WithPiriPostgres())
-func WithPiriPostgres() Option {
+//	s := stack.MustNewStack(t, stack.WithPiriCount(3))
+func WithPiriCount(n int) Option {
 	return func(c *config) {
-		c.piriPostgres = true
+		c.piriNodes = make([]PiriNodeConfig, n)
 	}
 }
 
-// WithPiriS3 enables the S3 (MinIO) blob storage backend for piri.
-// This starts an additional piri-minio service and configures piri to use
-// S3-compatible storage instead of the default filesystem storage.
+// WithPiriNodes configures specific piri nodes with individual settings.
 //
 // Example:
 //
-//	s := stack.MustNewStack(t, stack.WithPiriS3())
-func WithPiriS3() Option {
+//	s := stack.MustNewStack(t, stack.WithPiriNodes(
+//	    stack.PiriNodeConfig{Postgres: true, S3: true},
+//	    stack.PiriNodeConfig{},
+//	))
+func WithPiriNodes(nodes ...PiriNodeConfig) Option {
 	return func(c *config) {
-		c.piriS3 = true
+		c.piriNodes = nodes
 	}
 }

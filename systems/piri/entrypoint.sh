@@ -119,17 +119,6 @@ if [ -f "$OVERRIDES_CONFIG" ]; then
     fi
 fi
 
-# Append overrides config if present and not already applied
-if [ -f "$OVERRIDES_CONFIG" ]; then
-    # Check if overrides already appended (look for marker comment)
-    if ! grep -q "# --- piri-overrides.toml ---" "$CONFIG_FILE" 2>/dev/null; then
-        echo "  Applying config overrides..."
-        echo "" >> "$CONFIG_FILE"
-        echo "# --- piri-overrides.toml ---" >> "$CONFIG_FILE"
-        cat "$OVERRIDES_CONFIG" >> "$CONFIG_FILE"
-    fi
-fi
-
 # Step 4: Start piri server
 echo "[4/4] Starting piri..."
 exec /usr/bin/piri serve full --config "$CONFIG_FILE" "$@"

@@ -25,7 +25,6 @@ import "embed"
 //go:embed systems/indexing/ipni/entrypoint.sh
 //go:embed systems/indexing/indexer/compose.yml
 
-//go:embed systems/piri/compose.yml
 //go:embed systems/piri/entrypoint.sh
 //go:embed systems/piri/register-did.sh
 //go:embed systems/piri/config/*

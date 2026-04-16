@@ -38,20 +38,27 @@ Blockchain-verified storage proofs. Piri (the storage node) periodically proves 
 ```
 smelt/
 ├── .env                     # Service image defaults (configurable)
+├── smelt.yml                # Piri node manifest (count + per-node storage)
 ├── compose.yml              # Root compose file - includes all systems
 ├── Makefile                 # Primary developer interface
+├── cmd/smelt/               # Go CLI: `smelt generate` reads smelt.yml
+├── pkg/
+│   ├── manifest/            # smelt.yml schema and resolution
+│   ├── generate/            # Compose + key generation from manifest
+│   └── stack/               # Go test stack API (testcontainers-go)
 ├── scripts/
-│   └── init.sh             # Environment initialization
+│   └── init.sh             # Environment init (proofs + docker network)
 ├── generated/               # Generated at runtime (gitignored)
 │   ├── keys/               # Ed25519 (.pem) and EVM (.hex) keys
-│   │   ├── piri.pem        # Storage node identity
+│   │   ├── piri-0.pem      # First piri node identity
+│   │   ├── piri-0-wallet.hex  # First piri EVM wallet (from Anvil account)
 │   │   ├── indexer.pem     # Indexer identity
 │   │   ├── delegator.pem   # Delegation service identity
 │   │   ├── upload.pem      # Upload service identity
 │   │   └── payer-key.hex   # Blockchain transaction signing
+│   ├── compose/            # Generated piri.yml (from `make generate`)
 │   ├── proofs/             # UCAN delegation proofs
-│   ├── generate-keys.sh    # Key generation script
-│   └── generate-proofs.sh  # Proof generation script
+│   └── generate-proofs.sh  # Proof generation (shell; TODO: migrate to Go)
 ├── systems/                 # Service modules (each self-contained)
 │   ├── blockchain/         # Local EVM (Anvil) with PDP contracts
 │   ├── common/             # Shared infrastructure (DynamoDB Local, Redis)
@@ -60,12 +67,17 @@ smelt/
 │   ├── indexing/           # Content discovery
 │   │   ├── ipni/          # InterPlanetary Network Indexer
 │   │   └── indexer/       # Content claims cache
-│   ├── piri/              # Storage node
+│   ├── piri/              # Storage node template (generator reads config from here)
 │   ├── upload/            # Upload orchestration (mock w3infra)
 │   ├── guppy/             # CLI client
-│   └── telemetry/         # Optional observability (Grafana, Prometheus, Tempo)
+│   ├── telemetry/         # Observability stack (present but not wired into Makefile)
+│   └── stress-tester/     # Load test runner (present but not wired into Makefile)
 └── docs/
-    └── ARCHITECTURE.md     # Detailed service interaction diagrams
+    ├── GETTING_STARTED.md  # First-time setup walkthrough
+    ├── ARCHITECTURE.md     # Service interaction diagrams and data flow
+    ├── MULTI_PIRI.md       # Multi-piri design and manifest reference
+    ├── TROUBLESHOOTING.md  # Common issues and diagnostics
+    └── EXTENDING.md        # Adding services and customizations
 ```
 
 Each system directory contains:
@@ -76,10 +88,29 @@ Each system directory contains:
 
 ## Common Tasks
 
+### Configuring Piri Nodes
+
+Piri topology is declared in `smelt.yml` at the repo root. Edit this file to add, remove, or reconfigure nodes:
+
+```yaml
+version: 1
+piri:
+  nodes:
+    - storage:
+        db: sqlite       # or 'postgres'
+        blob: filesystem # or 's3'
+    # Add more nodes for multi-provider scenarios (up to 9 total)
+```
+
+Running `make generate` (or implicitly `make up`) regenerates `generated/compose/piri.yml` and any new keys. The Makefile has a file-target rule that reruns the generator whenever `smelt.yml` or any file under `cmd/smelt/`, `pkg/generate/`, or `pkg/manifest/` changes, so compose-invoking targets transparently stay in sync on fresh checkouts and post-`nuke` states.
+
+See [docs/MULTI_PIRI.md](docs/MULTI_PIRI.md) for the full manifest schema, shared infrastructure (postgres, MinIO), Anvil wallet mapping, and hot-add/remove behavior.
+
 ### Starting and Stopping
 
 ```bash
-make up        # Start all services (runs init if needed)
+make up        # Start all services (runs init if needed, regenerates compose if stale)
+make generate  # Regenerate compose + keys from smelt.yml (no container changes)
 make down      # Stop services (data preserved in volumes)
 make restart   # Stop then start
 make fresh     # Delete everything and rebuild (destructive)
@@ -106,6 +137,37 @@ docker compose exec guppy bash
 docker compose exec piri bash
 docker compose exec upload sh
 ```
+
+### Attaching a Go Debugger
+
+Some services publish `:main-dev` image variants with debug symbols (`-gcflags="all=-N -l"`) and `dlv` baked in. To run one under a debugger:
+
+```bash
+make debug-upload    # runs sprue under dlv, listening on localhost:2345
+```
+
+The service comes up normally (dlv uses `--continue`, so healthchecks and `post_start` hooks behave as usual). Attach a Delve client whenever:
+
+```bash
+dlv connect localhost:2345
+# or VS Code "Connect to server" / GoLand "Go Remote"
+```
+
+**IDE source mapping for sprue**: remote path `/go/src/sprue` maps to your local sprue checkout (e.g. `~/workspace/src/github.com/storacha/sprue`).
+
+To test a locally-built dev image instead of the published `:main-dev`:
+
+```bash
+UPLOAD_DEBUG_IMAGE=sprue:dev make debug-upload
+```
+
+To return a service to normal (non-debug) mode:
+
+```bash
+docker compose up -d --force-recreate upload
+```
+
+**Extending the pattern**: to debug another service, copy the `upload:` block in `compose.debug.yml` and (1) pick the next free debug port (2346, 2347, ...), (2) point `image:` at the service's `:main-dev` variant, (3) replace the binary path and args, and (4) add a matching `make debug-<service>` target. Services with non-trivial entrypoint scripts (e.g. piri's `entrypoint.sh` does DID and delegator registration) need a different strategy — typically teach the upstream entrypoint to `exec dlv ...` when a `DEBUG_DLV=1` env var is set, so the overlay just sets that env var rather than replacing `entrypoint:`.
 
 ### Testing the Upload Flow
 
@@ -165,66 +227,38 @@ make regen    # Regenerate all keys and proofs
 make clean && make up
 ```
 
-### Using Telemetry (Optional)
+### Piri Storage Backends
 
-The telemetry stack provides metrics and distributed tracing via Grafana.
+Storage backends are configured per-node in `smelt.yml` rather than via compose profiles. Each node entry can independently select `db: sqlite|postgres` and `blob: filesystem|s3`. When any node uses `postgres`, the generator emits a shared `piri-postgres` service plus a `piri-postgres-init` sidecar that idempotently creates per-node databases (`piri_0`, `piri_1`, ...). When any node uses `s3`, it emits a shared `piri-minio` service; each node gets a unique bucket prefix (`piri-0-`, `piri-1-`, ...).
 
-```bash
-# Start with telemetry enabled
-make up-telemetry
+Example manifest with all four permutations:
 
-# View Grafana URL and dashboard info
-make grafana
-
-# Check telemetry service status
-make telemetry-status
+```yaml
+version: 1
+piri:
+  nodes:
+    - storage: { db: sqlite,   blob: filesystem }  # piri-0
+    - storage: { db: postgres, blob: filesystem }  # piri-1
+    - storage: { db: sqlite,   blob: s3 }          # piri-2
+    - storage: { db: postgres, blob: s3 }          # piri-3
 ```
 
-**Grafana:** http://localhost:3001 (anonymous admin access, no login required)
-
-The telemetry stack includes:
-- **OTEL Collector**: Receives telemetry from services via OTLP
-- **Prometheus**: Metrics storage and querying
-- **Tempo**: Distributed trace storage
-- **Grafana**: Visualization dashboards
-
-Services like IPNI and Piri automatically send telemetry when started with `make up-telemetry`.
-
-### Piri Storage Profiles (Optional)
-
-Piri supports different storage backends via composable profiles. Storage services run on an isolated network accessible only to piri.
-
-```bash
-# PostgreSQL database (instead of SQLite)
-make up-piri-postgres
-
-# S3 blob storage via MinIO (instead of filesystem)
-make up-piri-s3
-
-# Both PostgreSQL and S3
-make up-piri-postgres-s3
-
-# Or compose directly:
-docker compose --profile piri-postgres --profile piri-s3 up -d
-```
-
-Environment variables for customization:
-- `PIRI_DB_BACKEND`: `sqlite` (default) or `postgres`
-- `PIRI_BLOB_BACKEND`: `filesystem` (default) or `s3`
-
-**Go API** (pkg/stack):
+**Go test stack API** (`pkg/stack`):
 ```go
-// PostgreSQL backend
-s := stack.MustNewStack(t, stack.WithPiriPostgres())
+// Multi-node
+s := stack.MustNewStack(t, stack.WithPiriCount(3))
 
-// S3 backend
-s := stack.MustNewStack(t, stack.WithPiriS3())
+// Heterogeneous nodes
+s := stack.MustNewStack(t, stack.WithPiriNodes(
+    stack.PiriNodeConfig{},                        // piri-0: sqlite + filesystem
+    stack.PiriNodeConfig{Postgres: true, S3: true}, // piri-1: postgres + s3
+))
 
-// Both backends
-s := stack.MustNewStack(t, stack.WithPiriPostgres(), stack.WithPiriS3())
+// Access per-node endpoints
+s.PiriEndpointN(0)    // piri-0
+s.PiriEndpointN(1)    // piri-1
+s.PiriCount()         // number of nodes
 ```
-
-**Network isolation**: The `piri-postgres` and `piri-minio` services are on a private `piri-storage-net` network. Only piri can access them; other services cannot reach these backends directly.
 
 ## Service Ports
 
@@ -237,28 +271,19 @@ s := stack.MustNewStack(t, stack.WithPiriPostgres(), stack.WithPiriS3())
 | delegator | 8081 | HTTP/UCAN | Delegation issuance |
 | ipni | 3000, 3002, 3003 | HTTP | Content discovery |
 | indexer | 9000 | HTTP/UCAN | Claims cache |
-| piri | 4000 | HTTP/UCAN | Storage node |
+| piri-{N} | 4000 + N | HTTP/UCAN | Storage node(s); N defined by `smelt.yml` (default 1, max 9) |
 | upload | 8080 | HTTP/UCAN | Upload coordination |
 | guppy | (none) | CLI | Client container |
 
-**Telemetry (optional, requires `make up-telemetry`):**
+**Piri Shared Storage** (only emitted when at least one node uses that backend):
 
 | Service | Port | Protocol | Description |
 |---------|------|----------|-------------|
-| grafana | 3001 | HTTP | Dashboard visualization |
-| prometheus | 9090 | HTTP | Metrics storage |
-| tempo | 3200 | HTTP | Distributed tracing |
-| otel-collector | 4317/4318 | gRPC/HTTP | OTLP telemetry receiver |
-
-**Piri Storage (optional, requires `--profile piri-postgres` or `--profile piri-s3`):**
-
-| Service | Port | Protocol | Description |
-|---------|------|----------|-------------|
-| piri-postgres | 5432 | PostgreSQL | Piri database |
-| piri-minio | 9002 | S3 | Blob storage API (isolated network) |
+| piri-postgres | 5432 | PostgreSQL | Shared instance; per-node databases `piri_0`, `piri_1`, ... |
+| piri-minio | 9002 | S3 | Shared instance; per-node bucket prefix `piri-{N}-` |
 | piri-minio | 9003 | HTTP | MinIO console |
 
-Note: Some services use different internal vs external ports (e.g., piri listens on 3000 internally, exposed as 4000).
+Note: Some services use different internal vs external ports (e.g., piri listens on 3000 internally, exposed as 4000+N).
 
 ## Configuration Files
 
@@ -371,96 +396,23 @@ The capability string must match exactly. `space/blob/add` is not `blob/add`. Ch
 | `storacha/go-ucanto` | UCAN implementation in Go |
 | `storacha/specs` | Protocol specifications |
 
-## CI/CD Infrastructure
+## Configurable Service Images
 
-Smelt serves as the integration testing backbone for the Storacha Forge network. When component repositories push new `:dev` tags, smelt automatically runs integration and stress tests.
-
-### CI Architecture
-
-```
-Component Repos                          Smelt CI
-┌─────────────────┐                    ┌─────────────────────────────────┐
-│ piri            │──┐                 │  Integration Tests              │
-│ guppy           │  │  repository_    │  (GitHub-hosted, ~10 min)       │
-│ indexing-service│  │  dispatch       │  - Stack health checks          │
-│ delegator       │──┼────────────────▶│  - Upload flow verification     │
-│ sprue           │  │                 │  - Delegation tests             │
-│ piri-signing    │──┘                 ├─────────────────────────────────┤
-└─────────────────┘                    │  Stress Tests                   │
-                                       │  (Self-hosted, nightly)         │
-                                       │  - Concurrent uploads           │
-                                       │  - Load testing                 │
-                                       └─────────────────────────────────┘
-```
-
-### Test Structure
-
-```
-tests/
-├── integration/
-│   ├── run-tests.sh              # Main test runner
-│   ├── test-stack-health.sh      # Verify all services healthy
-│   ├── test-upload-flow.sh       # End-to-end upload test
-│   └── test-delegation.sh        # UCAN delegation tests
-├── stress/
-│   ├── run-stress.sh             # Stress test runner
-│   └── test-concurrent-uploads.sh
-└── lib/
-    ├── common.sh                 # Shared utilities (guppy_cmd, is_healthy, etc.)
-    └── assertions.sh             # Test assertion helpers
-```
-
-### Running Tests Locally
+Service images are configurable via environment variables, with defaults in `.env`. Useful for switching registries, testing a PR build, or overriding a specific component:
 
 ```bash
-# Start the stack
-make up
-
-# Wait for all services to be healthy
-./scripts/ci/wait-for-healthy.sh --timeout 300
-
-# Run integration tests
-./tests/integration/run-tests.sh
-
-# Run stress tests (short duration for local testing)
-./tests/stress/run-stress.sh --duration 1 --concurrent 2
-```
-
-### Configurable Service Images
-
-All service images are configurable via environment variables, with defaults defined in `.env`. This allows switching registries, images, or tags for CI, local builds, or testing:
-
-```bash
-# Override specific images (full image specification)
+# Override one image
 PIRI_IMAGE=ghcr.io/storacha/piri:v1.2.3 make up
 
-# Override multiple images
+# Override several at once
 PIRI_IMAGE=myregistry/piri:test GUPPY_IMAGE=myregistry/guppy:test make up
-
-# Available variables (defaults in .env):
-# PIRI_IMAGE, GUPPY_IMAGE, DELEGATOR_IMAGE, INDEXER_IMAGE,
-# IPNI_IMAGE, SIGNER_IMAGE, UPLOAD_IMAGE, BLOCKCHAIN_IMAGE
 ```
 
-### GitHub Actions Workflows
+Available variables: `PIRI_IMAGE`, `GUPPY_IMAGE`, `DELEGATOR_IMAGE`, `INDEXER_IMAGE`, `IPNI_IMAGE`, `SIGNER_IMAGE`, `UPLOAD_IMAGE`, `BLOCKCHAIN_IMAGE`. Defaults live in `.env`.
 
-- `.github/workflows/integration-tests.yml` - Triggered by repository_dispatch + scheduled every 6 hours
-- `.github/workflows/stress-tests.yml` - Nightly stress tests on self-hosted runner
+## CI/CD
 
-### Triggering from Component Repos
-
-Component repos trigger smelt tests via repository_dispatch:
-
-```yaml
-# In component repo's CI workflow
-- name: Trigger Smelt Integration Tests
-  uses: peter-evans/repository-dispatch@v3
-  with:
-    token: ${{ secrets.SMELT_TRIGGER_TOKEN }}
-    repository: storacha/smelt
-    event-type: component-updated
-    client-payload: '{"component": "piri", "sha": "${{ github.sha }}"}'
-```
+There is no CI wired up in this repository yet. When CI lands, this section will describe the triggers, workflows, and test structure.
 
 ## Further Reading
 

@@ -77,17 +77,22 @@ docker compose logs ipni
 
 #### Piri Stays Unhealthy
 
-**Expected behavior**: Piri takes up to 3 minutes on first start. It performs a multi-step initialization:
+**Expected behavior**: Each piri node takes up to 3 minutes on first start. Per-node multi-step initialization:
 
-1. Registers with the blockchain
+1. Registers as a provider with the PDP contracts (via signing-service)
 2. Gets delegation from the delegator
-3. Starts serving
+3. Creates a proof set and waits for on-chain confirmation
+4. Starts serving
 
-The health check has a `start_period: 180s` to account for this.
+The health check has a `start_period: 180s` to account for this. When `smelt.yml` declares multiple nodes, each `piri-N` initializes independently and can fail independently — one hung node does not affect the others.
 
 **Diagnostic**:
 ```bash
-docker compose logs piri
+# Inspect a specific node (replace N with 0, 1, ...)
+docker compose logs piri-N
+
+# Or all piri services at once
+docker compose logs --tail 100 $(docker compose ps --services | grep '^piri-')
 ```
 
 **What to look for**:
@@ -144,7 +149,7 @@ Failed to connect to IPNI
 
 #### Upload Stays Unhealthy
 
-**Dependencies**: indexer, piri, dynamodb-local
+**Static dependencies**: `indexer`, `dynamodb-local`. Note that `upload` does **not** statically depend on any `piri-{N}` — it reaches piri nodes via service DID resolution at request time. This means upload can be healthy while piri is not, and upload requests will fail at invocation time instead of at startup.
 
 **Diagnostic**:
 ```bash
@@ -156,7 +161,7 @@ docker compose logs upload
 | Symptom | Cause | Solution |
 |---------|-------|----------|
 | "Cannot connect to indexer" | Indexer not healthy | Fix indexer first |
-| "Cannot connect to piri" | Piri not healthy | Fix piri first |
+| "Cannot connect to piri" at request time | A piri node not healthy | `docker compose logs piri-0` (or the target node) |
 | "DynamoDB connection failed" | dynamodb-local not healthy | `docker compose logs dynamodb-local` |
 | Starts but invocations fail | Delegation proof missing | `make nuke && make up` |
 
@@ -750,7 +755,7 @@ curl -s http://localhost:3000/health
 # Indexer (should return 200 OK)
 curl -s -o /dev/null -w "%{http_code}" http://localhost:9000/
 
-# Piri (should return 200 OK)
+# Piri piri-0 (should return 200 OK). Additional nodes live on 4001, 4002, ...
 curl -s -o /dev/null -w "%{http_code}" http://localhost:4000/
 
 # Upload (should return 200 OK)

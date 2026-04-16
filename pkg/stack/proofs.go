@@ -14,6 +14,7 @@ import (
 	ed25519 "github.com/storacha/go-ucanto/principal/ed25519/signer"
 	"github.com/storacha/go-ucanto/principal/signer"
 	"github.com/storacha/go-ucanto/ucan"
+	"github.com/storacha/smelt/pkg/manifest"
 )
 
 // proofSpec defines a UCAN delegation proof to generate.
@@ -25,9 +26,10 @@ type proofSpec struct {
 	outputFile    string   // Output file name in proofs directory
 }
 
-// proofSpecs defines all the delegation proofs needed for the stack.
-// These correspond to what generate-proofs.sh creates.
-var proofSpecs = []proofSpec{
+// staticProofSpecs are the non-piri proofs that are always needed regardless
+// of how many piri nodes are declared in the manifest. Per-node piri proofs
+// are generated separately in generateProofs below, once per resolved node.
+var staticProofSpecs = []proofSpec{
 	{
 		issuerKeyName: "indexer",
 		issuerDidWeb:  "did:web:indexer",
@@ -42,20 +44,42 @@ var proofSpecs = []proofSpec{
 		capabilities:  []string{"egress/track"},
 		outputFile:    "egress-tracking-proof.txt",
 	},
-	{
-		issuerKeyName: "piri",
-		audienceDid:   "did:web:upload",
-		capabilities:  []string{"blob/allocate", "blob/accept", "blob/replica/allocate", "pdp/info"},
-		outputFile:    "piri-proof.txt",
-	},
 }
 
-// generateProofs generates all UCAN delegation proofs needed for service communication.
-func generateProofs(tempDir string) error {
+// piriCapabilities are delegated from each piri-N node to the upload service
+// so upload can register the node as a storage provider and invoke blob/*
+// operations on its behalf.
+var piriCapabilities = []string{
+	"blob/allocate",
+	"blob/accept",
+	"blob/replica/allocate",
+	"pdp/info",
+}
+
+// generateProofs generates all UCAN delegation proofs needed for service
+// communication: the static indexer/etracker → delegator proofs plus one
+// piri-N → upload proof per node in the resolved manifest.
+func generateProofs(tempDir string, nodes []manifest.ResolvedPiriNode) error {
 	keysDir := filepath.Join(tempDir, "generated", "keys")
 	proofsDir := filepath.Join(tempDir, "generated", "proofs")
+	if err := os.MkdirAll(proofsDir, 0755); err != nil {
+		return fmt.Errorf("create proofs dir: %w", err)
+	}
 
-	for _, spec := range proofSpecs {
+	for _, spec := range staticProofSpecs {
+		if err := generateDelegation(keysDir, proofsDir, spec); err != nil {
+			return fmt.Errorf("generate %s: %w", spec.outputFile, err)
+		}
+	}
+
+	// Per-node piri → upload delegations. One proof per declared piri node.
+	for _, node := range nodes {
+		spec := proofSpec{
+			issuerKeyName: node.Name, // e.g. "piri-0"
+			audienceDid:   "did:web:upload",
+			capabilities:  piriCapabilities,
+			outputFile:    node.Name + "-proof.txt",
+		}
 		if err := generateDelegation(keysDir, proofsDir, spec); err != nil {
 			return fmt.Errorf("generate %s: %w", spec.outputFile, err)
 		}

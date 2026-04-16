@@ -26,18 +26,10 @@ echo "Step 1: Creating generated/ directory..."
 mkdir -p "$GENERATED_DIR/keys"
 mkdir -p "$GENERATED_DIR/proofs"
 
-# Step 2: Generate keys
-echo ""
-echo "Step 2: Generating service keys..."
-if [[ -x "$GENERATED_DIR/generate-keys.sh" ]]; then
-    "$GENERATED_DIR/generate-keys.sh" $FORCE
-else
-    echo "ERROR: generate-keys.sh not found or not executable"
-    echo "Expected at: $GENERATED_DIR/generate-keys.sh"
-    exit 1
-fi
+# Note: Key generation is handled by 'smelt generate' (called via 'make generate').
+# This script handles proof generation and Docker network creation.
 
-# Step 3: Check for mkdelegation (needed for proof generation)
+# Step 2: Check for mkdelegation (needed for proof generation)
 echo ""
 echo "Step 3: Checking for mkdelegation..."
 # Check for mkdelegation
@@ -59,10 +51,12 @@ if ! command -v "$MKDELEGATION" &> /dev/null; then
     fi
 fi
 
-
-# Step 4: Generate delegation proofs
+# Step 3: Generate delegation proofs
+# TODO: migrate UCAN proof generation into pkg/generate/ (Go) so scripts/init.sh
+# and generated/generate-proofs.sh can be removed. Key generation has already
+# been migrated to 'smelt generate'; proofs are the last shell-based step.
 echo ""
-echo "Step 4: Generating delegation proofs..."
+echo "Step 3: Generating delegation proofs..."
 if [[ -x "$GENERATED_DIR/generate-proofs.sh" ]]; then
     if command -v "$MKDELEGATION" &> /dev/null; then
         "$GENERATED_DIR/generate-proofs.sh" $FORCE
@@ -74,9 +68,9 @@ else
     echo "         Proof generation will be skipped."
 fi
 
-# Step 5: Create Docker network
+# Step 4: Create Docker network
 echo ""
-echo "Step 5: Creating Docker network..."
+echo "Step 4: Creating Docker network..."
 if docker network inspect storacha-network >/dev/null 2>&1; then
     echo "  Network 'storacha-network' already exists"
 else
