@@ -39,7 +39,7 @@ fi
 
 # Step 3: Check for mkdelegation (needed for proof generation)
 echo ""
-echo "Step 3: Checking for mkdelegation..."
+echo "Step 2: Checking for mkdelegation..."
 # Check for mkdelegation
 MKDELEGATION="${MKDELEGATION:-mkdelegation}"
 if ! command -v "$MKDELEGATION" &> /dev/null; then
@@ -52,9 +52,11 @@ if ! command -v "$MKDELEGATION" &> /dev/null; then
             go install github.com/storacha/go-mkdelegation@latest
             echo "  mkdelegation installed successfully"
         else
-            echo "WARNING: Go not found. Cannot install mkdelegation."
-            echo "         Proof generation will be skipped."
-            echo "         Install manually: go install github.com/storacha/go-mkdelegation@latest"
+					{
+							echo "WARNING: Go not found. Cannot install mkdelegation."
+							echo "         Proof generation will be skipped."
+							echo "         Install manually: go install github.com/storacha/go-mkdelegation@latest"
+					} >/dev/stderr
         fi
     fi
 fi
@@ -70,8 +72,10 @@ if [[ -x "$GENERATED_DIR/generate-proofs.sh" ]]; then
         echo "  Skipping proof generation (mkdelegation not available)"
     fi
 else
-    echo "WARNING: generate-proofs.sh not found or not executable"
-    echo "         Proof generation will be skipped."
+		{
+			echo "WARNING: generate-proofs.sh not found or not executable"
+			echo "         Proof generation will be skipped."
+		} >/dev/stderr
 fi
 
 # Step 5: Create Docker network
