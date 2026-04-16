@@ -36,14 +36,19 @@ Wait until all services show `healthy`. This typically takes 30-60 seconds after
 make shell-guppy
 
 # Create an account (inside the container)
+# Visit http://localhost:2580 and click the link (or programmatically get
+# messages from http://localhost:2580/api/messages and POST to the link).
 guppy login your@email.com
 
 # Create a storage space
-guppy space create my-space
+guppy space generate --name my-space
 
-# Upload something
+# Create & add source
 echo "Hello Storacha" > /tmp/hello.txt
-guppy upload /tmp/hello.txt
+guppy upload source add did:key:z6Mk... /tmp/hello.txt
+
+# Upload
+guppy upload did:key:z6Mk... /tmp/hello.txt
 ```
 
 You now have content stored on your local Storacha network, complete with blockchain proofs and content indexing.
@@ -64,6 +69,7 @@ You now have content stored on your local Storacha network, complete with blockc
 | upload | 8080 | Upload orchestration service |
 | guppy | — | CLI client for uploads (no exposed port) |
 | smtp4dev | 2525 | SMTP server |
+| smtp4dev | 2580 | Email UI and API |
 
 ## Architecture
 
