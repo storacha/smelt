@@ -148,7 +148,6 @@ pkg/generate/           Generation logic (shared by CLI and pkg/stack)
 
 ### Key Design Decisions
 
-**Manifest replaces profiles.** The old `--profile piri-postgres` / `--profile piri-s3` approach cannot express per-node storage configurations. The manifest declares storage backends per node, and the generator conditionally includes shared infra services. The Makefile targets `up-piri-postgres`, `up-piri-s3`, and `up-piri-postgres-s3` have been removed.
 
 **Generator in Go.** The generation logic lives in `pkg/generate/` so it can be called both from the CLI (`cmd/smelt/`) and from the Go test stack (`pkg/stack/`). This avoids maintaining parallel shell and Go implementations.
 
