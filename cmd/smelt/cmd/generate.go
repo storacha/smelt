@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 	"github.com/storacha/smelt/pkg/generate"
 )
 
@@ -19,20 +20,20 @@ var generateCmd = &cobra.Command{
 
 func init() {
 	rootCmd.AddCommand(generateCmd)
-	generateCmd.Flags().StringP("manifest", "m", "smelt.yml", "path to manifest file")
-	generateCmd.Flags().StringP("project-dir", "d", ".", "project root directory")
-	generateCmd.Flags().Bool("force", false, "overwrite existing keys")
+	generateCmd.Flags().StringP("manifest", "m", "smelt.yml", "path to manifest file (env SMELT_MANIFEST)")
+	generateCmd.Flags().StringP("project-dir", "d", ".", "project root directory (env SMELT_PROJECT_DIR)")
+	generateCmd.Flags().Bool("force", false, "overwrite existing keys (env SMELT_FORCE)")
+
+	viper.BindPFlag("manifest", generateCmd.Flags().Lookup("manifest"))
+	viper.BindPFlag("project-dir", generateCmd.Flags().Lookup("project-dir"))
+	viper.BindPFlag("force", generateCmd.Flags().Lookup("force"))
 }
 
 func runGenerate(cmd *cobra.Command, args []string) error {
-	manifestPath, _ := cmd.Flags().GetString("manifest")
-	projectDir, _ := cmd.Flags().GetString("project-dir")
-	force, _ := cmd.Flags().GetBool("force")
-
 	result, err := generate.Generate(generate.Options{
-		ManifestPath: manifestPath,
-		ProjectDir:   projectDir,
-		Force:        force,
+		ManifestPath: viper.GetString("manifest"),
+		ProjectDir:   viper.GetString("project-dir"),
+		Force:        viper.GetBool("force"),
 	})
 	if err != nil {
 		return err
