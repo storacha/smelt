@@ -23,8 +23,8 @@ import (
 	"time"
 
 	"github.com/docker/docker/pkg/stdcopy"
-	"github.com/docker/go-connections/nat"
 	_ "github.com/lib/pq" // postgres driver for wait.ForSQL
+	"github.com/testcontainers/testcontainers-go/exec"
 	"github.com/testcontainers/testcontainers-go/modules/compose"
 	"github.com/testcontainers/testcontainers-go/wait"
 
@@ -149,8 +149,8 @@ func NewStack(ctx context.Context, t *testing.T, opts ...Option) (*Stack, error)
 	}
 	if needsPostgres {
 		waitStack = waitStack.WaitForService("piri-postgres",
-			wait.ForSQL("5432/tcp", "postgres", func(host string, port nat.Port) string {
-				return fmt.Sprintf("postgres://piri:piri@%s:%s/piri?sslmode=disable", host, port.Port())
+			wait.ForSQL("5432/tcp", "postgres", func(host string, port string) string {
+				return fmt.Sprintf("postgres://piri:piri@%s:%s/piri?sslmode=disable", host, port)
 			}).WithStartupTimeout(1*time.Minute))
 	}
 	if needsS3 {
@@ -240,7 +240,7 @@ func (s *Stack) Exec(ctx context.Context, service string, args ...string) (stdou
 		return "", "", fmt.Errorf("get container for %s: %w", service, err)
 	}
 
-	exitCode, reader, err := container.Exec(ctx, args)
+	exitCode, reader, err := container.Exec(ctx, args, exec.WithUser("root"))
 	if err != nil {
 		return "", "", fmt.Errorf("exec command: %w", err)
 	}
