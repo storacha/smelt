@@ -2,16 +2,50 @@ package smelt_test
 
 import (
 	"fmt"
+	"os"
+	"runtime"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
 
+	docker_client "github.com/docker/docker/client"
 	"github.com/storacha/smelt/pkg/clients/guppy"
 	"github.com/storacha/smelt/pkg/stack"
 )
 
+// IsRunningInCI returns true of process is running in CI environment.
+func IsRunningInCI(t testing.TB) bool {
+	t.Helper()
+	return os.Getenv("CI") != ""
+}
+
+// IsDockerAvailable returns true if the docker daemon is available, useful for skipping tests when docker isn't running
+func IsDockerAvailable(t testing.TB) bool {
+	t.Helper()
+	c, err := docker_client.NewClientWithOpts(docker_client.FromEnv, docker_client.WithAPIVersionNegotiation())
+	require.NoError(t, err)
+
+	_, err = c.Info(t.Context())
+	if err != nil {
+		t.Logf("Docker not available for test %s: %v", t.Name(), err)
+		return false
+	}
+	return true
+}
+
 func TestUploadAndRetrieve(t *testing.T) {
+	// This test expects docker to be running in linux CI environments and fails if it's not
+	if IsRunningInCI(t) && runtime.GOOS == "linux" {
+		if !IsDockerAvailable(t) {
+			t.Fatalf("docker is expected in CI linux testing environments, but wasn't found")
+		}
+	}
+	// otherwise this test is running locally, skip it if docker isn't available
+	if !IsDockerAvailable(t) {
+		t.SkipNow()
+	}
+
 	ctx := t.Context()
 
 	s := stack.MustNewStack(t, stack.WithGuppyImage("ghcr.io/storacha/guppy:main-dev"))
