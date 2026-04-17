@@ -39,17 +39,14 @@ func TestUploadAndRetrieve(t *testing.T) {
 	require.NoError(t, err)
 	t.Log("Added source")
 
-	_, err = gup.Upload(ctx, spaceDID, guppy.WithReplicas(1))
-	fmt.Println("FINISHED UP BUT ERR", err)
-	time.Sleep(5 * time.Minute)
+	cids, err := gup.Upload(ctx, spaceDID, guppy.WithReplicas(1))
+	require.NoError(t, err)
+	if len(cids) == 0 {
+		t.Fatal("expected at least one CID from upload")
+	}
+	t.Logf("Uploaded CIDs: %v", cids)
 
-	// require.NoError(t, err)
-	// if len(cids) == 0 {
-	// 	t.Fatal("expected at least one CID from upload")
-	// }
-	// t.Logf("Uploaded CIDs: %v", cids)
-
-	// dstPath := fmt.Sprintf("/tmp/testdata-download-%d", time.Now().UnixNano())
-	// err = gup.Retrieve(ctx, spaceDID, cids[len(cids)-1], dstPath)
-	// require.NoError(t, err)
+	dstPath := fmt.Sprintf("/tmp/testdata-download-%d", time.Now().UnixNano())
+	err = gup.Retrieve(ctx, spaceDID, cids[len(cids)-1], dstPath)
+	require.NoError(t, err)
 }

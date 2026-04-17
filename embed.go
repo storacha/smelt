@@ -34,4 +34,5 @@ import "embed"
 
 //go:embed systems/upload/compose.yml
 //go:embed systems/upload/config/*
+//go:embed systems/upload/post_start.sh
 var EmbeddedFiles embed.FS
