@@ -1,0 +1,44 @@
+# Host port mappings for local development. Included by default via the
+# Makefile. Set NOPORTS=1 to disable.
+#
+# These are optional. Services communicate with each other via Docker network
+# DNS. Host ports are only needed for accessing services from the host machine
+# (browser, curl, debugging tools, etc).
+#
+# To customize, use another override file like this one.
+
+services:
+  blockchain:
+    ports:
+      - "8545:8545"
+  dynamodb-local:
+    ports:
+      - "8000:8000"
+  minio:
+    ports:
+      - "9010:9000" # S3 API
+      - "9011:9001" # Console
+  email:
+    ports:
+      - "2525:25" # SMTP
+      - "2580:80" # Web UI
+  signing-service:
+    ports:
+      - "7446:7446"
+  delegator:
+    ports:
+      - "8081:80"
+  ipni:
+    ports:
+      - "3000:3000" # Finder (queries)
+      - "3002:3002" # Admin
+      - "3003:3003" # P2P (libp2p)
+  redis:
+    ports:
+      - "6379:6379"
+  indexer:
+    ports:
+      - "9000:80"
+  upload:
+    ports:
+      - "8080:80"

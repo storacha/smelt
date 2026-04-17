@@ -474,7 +474,16 @@ lsof -i :8545
 ss -tlnp | grep 8545
 ```
 
-**Solution**: Stop the conflicting process, or modify the port mapping in the relevant `compose.yml` file.
+**Solutions**:
+
+```bash
+# Option 1: Disable all host port mappings
+NOPORTS=1 make up
+
+# Option 2: Edit compose.ports.yml to change specific port numbers
+
+# Option 3: Stop the conflicting process
+```
 
 Common port conflicts:
 

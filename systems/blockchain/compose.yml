@@ -6,8 +6,6 @@
 services:
   blockchain:
     image: ${BLOCKCHAIN_IMAGE:-ghcr.io/storacha/filecoin-localdev:f2acf8a}
-    ports:
-      - "8545:8545"
     volumes:
       # Pre-dumped state files for fast startup (~3s instead of ~30s)
       - ./state/anvil-state.json:/app/anvil-state.json:ro

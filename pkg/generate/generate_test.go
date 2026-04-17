@@ -109,9 +109,9 @@ func TestGeneratePiriComposeSingleNode(t *testing.T) {
 		t.Error("minio service should not be present for filesystem-only config")
 	}
 
-	// Should contain the correct port.
-	if !strings.Contains(yaml, "4000:3000") {
-		t.Error("expected port mapping 4000:3000")
+	// Base compose should NOT contain port mappings (ports are in the separate ports file).
+	if strings.Contains(yaml, "4000:3000") {
+		t.Error("base compose should not contain port mappings")
 	}
 }
 
@@ -136,10 +136,10 @@ func TestGeneratePiriComposeMultiNode(t *testing.T) {
 		}
 	}
 
-	// Port mappings.
+	// Base compose should NOT contain port mappings.
 	for _, port := range []string{"4000:3000", "4001:3000", "4002:3000"} {
-		if !strings.Contains(yaml, port) {
-			t.Errorf("expected port mapping %s", port)
+		if strings.Contains(yaml, port) {
+			t.Errorf("base compose should not contain port mapping %s", port)
 		}
 	}
 
@@ -219,6 +219,75 @@ func TestGeneratePiriComposeSerializedStartup(t *testing.T) {
 	}
 }
 
+func TestGeneratePiriPortsComposeSingleNode(t *testing.T) {
+	nodes := []manifest.ResolvedPiriNode{
+		{Name: "piri-0", Index: 0, Storage: manifest.StorageSpec{DB: "sqlite", Blob: "filesystem"}},
+	}
+
+	data, err := GeneratePiriPortsCompose(nodes)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	yaml := string(data)
+
+	// Should contain the correct port mapping.
+	if !strings.Contains(yaml, "4000:3000") {
+		t.Error("expected port mapping 4000:3000")
+	}
+
+	// Should NOT contain postgres or minio ports (sqlite/filesystem).
+	if strings.Contains(yaml, "5432:5432") {
+		t.Error("postgres port should not be present for sqlite-only config")
+	}
+	if strings.Contains(yaml, "9002:9000") {
+		t.Error("minio port should not be present for filesystem-only config")
+	}
+}
+
+func TestGeneratePiriPortsComposeMultiNode(t *testing.T) {
+	nodes := []manifest.ResolvedPiriNode{
+		{Name: "piri-0", Index: 0, Storage: manifest.StorageSpec{DB: "sqlite", Blob: "filesystem"}},
+		{Name: "piri-1", Index: 1, Storage: manifest.StorageSpec{DB: "postgres", Blob: "s3"}},
+		{Name: "piri-2", Index: 2, Storage: manifest.StorageSpec{DB: "postgres", Blob: "filesystem"}},
+	}
+
+	data, err := GeneratePiriPortsCompose(nodes)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	yaml := string(data)
+
+	// All piri port mappings should be present.
+	for _, port := range []string{"4000:3000", "4001:3000", "4002:3000"} {
+		if !strings.Contains(yaml, port) {
+			t.Errorf("expected port mapping %s", port)
+		}
+	}
+
+	// Postgres port should be present.
+	if !strings.Contains(yaml, "5432:5432") {
+		t.Error("expected postgres port mapping")
+	}
+
+	// MinIO ports should be present.
+	if !strings.Contains(yaml, "9002:9000") {
+		t.Error("expected minio S3 port mapping")
+	}
+	if !strings.Contains(yaml, "9003:9001") {
+		t.Error("expected minio console port mapping")
+	}
+
+	// Ports file should NOT contain non-port configuration.
+	if strings.Contains(yaml, "healthcheck") {
+		t.Error("ports file should not contain healthcheck configuration")
+	}
+	if strings.Contains(yaml, "volumes") {
+		t.Error("ports file should not contain volume configuration")
+	}
+}
+
 func TestGenerateEndToEnd(t *testing.T) {
 	tmpDir := t.TempDir()
 
@@ -254,9 +323,12 @@ piri:
 		t.Errorf("expected 2 nodes, got %d", result.NodeCount)
 	}
 
-	// Check compose file exists.
+	// Check compose files exist.
 	if _, err := os.Stat(result.PiriComposePath); err != nil {
 		t.Errorf("piri compose not created: %v", err)
+	}
+	if _, err := os.Stat(result.PiriPortsComposePath); err != nil {
+		t.Errorf("piri ports compose not created: %v", err)
 	}
 
 	// Check keys exist.

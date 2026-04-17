@@ -17,9 +17,10 @@ type Options struct {
 
 // Result contains the paths to all generated artifacts.
 type Result struct {
-	PiriComposePath string
-	KeysDir         string
-	NodeCount       int
+	PiriComposePath      string
+	PiriPortsComposePath string
+	KeysDir              string
+	NodeCount            int
 }
 
 // Generate reads the manifest, generates keys, and produces Docker Compose files.
@@ -56,9 +57,20 @@ func Generate(opts Options) (*Result, error) {
 		return nil, fmt.Errorf("write piri compose: %w", err)
 	}
 
+	// Generate piri ports compose (separate file for optional port mappings).
+	piriPortsYAML, err := GeneratePiriPortsCompose(nodes)
+	if err != nil {
+		return nil, fmt.Errorf("generate piri ports compose: %w", err)
+	}
+	piriPortsPath := filepath.Join(composeDir, "piri.ports.yml")
+	if err := os.WriteFile(piriPortsPath, piriPortsYAML, 0644); err != nil {
+		return nil, fmt.Errorf("write piri ports compose: %w", err)
+	}
+
 	return &Result{
-		PiriComposePath: piriPath,
-		KeysDir:         keysDir,
-		NodeCount:       len(nodes),
+		PiriComposePath:      piriPath,
+		PiriPortsComposePath: piriPortsPath,
+		KeysDir:              keysDir,
+		NodeCount:            len(nodes),
 	}, nil
 }

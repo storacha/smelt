@@ -66,6 +66,41 @@ func GeneratePiriCompose(nodes []manifest.ResolvedPiriNode) ([]byte, error) {
 	return marshalCompose(compose)
 }
 
+// GeneratePiriPortsCompose generates a Docker Compose YAML containing only
+// host port mappings for piri services. This is kept separate so that port
+// mappings can be optionally layered on via `docker compose -f`.
+func GeneratePiriPortsCompose(nodes []manifest.ResolvedPiriNode) ([]byte, error) {
+	compose := newComposeFile()
+
+	needsPostgres := false
+	needsS3 := false
+
+	for _, node := range nodes {
+		compose.Services[node.Name] = ComposeService{
+			Ports: []string{fmt.Sprintf("%d:3000", 4000+node.Index)},
+		}
+		if node.Storage.DB == manifest.DBPostgres {
+			needsPostgres = true
+		}
+		if node.Storage.Blob == manifest.BlobS3 {
+			needsS3 = true
+		}
+	}
+
+	if needsPostgres {
+		compose.Services["piri-postgres"] = ComposeService{
+			Ports: []string{"5432:5432"},
+		}
+	}
+	if needsS3 {
+		compose.Services["piri-minio"] = ComposeService{
+			Ports: []string{"9002:9000", "9003:9001"},
+		}
+	}
+
+	return marshalCompose(compose)
+}
+
 func buildPiriService(node manifest.ResolvedPiriNode) ComposeService {
 	image := "${PIRI_IMAGE:-ghcr.io/storacha/piri:main}"
 	if node.Image != "" {
@@ -100,7 +135,6 @@ func buildPiriService(node manifest.ResolvedPiriNode) ComposeService {
 	return ComposeService{
 		Image:      image,
 		User:       "0:0",
-		Ports:      []string{fmt.Sprintf("%d:3000", 4000+node.Index)},
 		Entrypoint: []string{"/entrypoint.sh"},
 		Volumes: []string{
 			fmt.Sprintf("%s-data:/data/piri", node.Name),
@@ -135,7 +169,6 @@ func buildPiriService(node manifest.ResolvedPiriNode) ComposeService {
 func buildPostgresService() ComposeService {
 	return ComposeService{
 		Image: "postgres:16-alpine",
-		Ports: []string{"5432:5432"},
 		Environment: []string{
 			"POSTGRES_USER=piri",
 			"POSTGRES_PASSWORD=piri",
@@ -184,7 +217,6 @@ func buildMinioService() ComposeService {
 	return ComposeService{
 		Image:   "minio/minio:latest",
 		Command: []string{"server", "/data", "--console-address", ":9001"},
-		Ports:   []string{"9002:9000", "9003:9001"},
 		Environment: []string{
 			"MINIO_ROOT_USER=minioadmin",
 			"MINIO_ROOT_PASSWORD=minioadmin",

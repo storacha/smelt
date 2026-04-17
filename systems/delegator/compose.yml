@@ -7,9 +7,6 @@ services:
   delegator:
     image: ${DELEGATOR_IMAGE:-ghcr.io/storacha/delegator:main}
     user: "0:0"  # Run as root for volume permissions (key files are 600)
-    ports:
-      # Internal port 80 for did:web resolution
-      - "8081:80"
     command: ["serve", "--host", "0.0.0.0", "--port", "80"]
     volumes:
       - ../../generated/keys/delegator.pem:/keys/delegator.pem:ro

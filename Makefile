@@ -4,6 +4,13 @@ DOCKER := $(shell which docker)
 # Set YES=1 to skip confirmation prompts (e.g., make nuke YES=1)
 YES ?= 0
 
+# Docker Compose file list with optional host port mappings.
+# Set NOPORTS=1 to start services without host port exposure.
+export COMPOSE_FILE := compose.yml
+ifndef NOPORTS
+  export COMPOSE_FILE := compose.yml:compose.ports.yml:generated/compose/piri.ports.yml
+endif
+
 .PHONY: help generate init up down restart clean nuke fresh logs pull build status guppy regen debug-upload
 
 # Default target - show help
@@ -42,6 +49,7 @@ help:
 	@echo ""
 	@echo "Options:"
 	@echo "  YES=1              Skip confirmation prompts (e.g., make nuke YES=1)"
+	@echo "  NOPORTS=1          Start services without host port mappings"
 	@echo ""
 	@echo "Destructive commands (clean, nuke, fresh) require confirmation."
 	@echo ""
@@ -53,7 +61,7 @@ generate:
 # File target: rebuild the generated piri compose when the manifest or
 # generator source changes. Compose-invoking targets below depend on this
 # so fresh checkouts and post-nuke states regenerate piri.yml on demand.
-generated/compose/piri.yml: smelt.yml $(shell find cmd/smelt pkg/generate pkg/manifest -name '*.go' 2>/dev/null)
+generated/compose/piri.yml generated/compose/piri.ports.yml: smelt.yml $(shell find cmd/smelt pkg/generate pkg/manifest -name '*.go' 2>/dev/null)
 	@go run ./cmd/smelt generate
 
 # Initialize the environment (generate keys, proofs, create network)
