@@ -10,6 +10,8 @@ import (
 	"github.com/storacha/smelt/pkg/stack"
 )
 
+var ErrLoggedIn = fmt.Errorf("already logged in")
+
 // Compile-time check that ContainerClient implements guppy.Client.
 var _ Client = (*ContainerClient)(nil)
 
@@ -33,18 +35,19 @@ func (c *ContainerClient) guppyExec(ctx context.Context, args ...string) (stdout
 	return c.exec(ctx, args...)
 }
 
-// Login logs in with the given email.
+// Login logs in with the given email. Returns [ErrLoggedIn] if the email is
+// already logged in.
 func (c *ContainerClient) Login(ctx context.Context, email string) error {
 	stdout, _, err := c.guppyExec(ctx, "login", email)
 	if err != nil {
 		return err
 	}
-
-	// Check for success indicators
-	if !strings.Contains(stdout, "Successfully logged in") && !strings.Contains(stdout, "already logged in") {
+	if strings.Contains(stdout, "already logged in") {
+		return ErrLoggedIn
+	}
+	if !strings.Contains(stdout, "Successfully logged in") {
 		return fmt.Errorf("login may have failed, output: %s", stdout)
 	}
-
 	return nil
 }
 

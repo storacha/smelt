@@ -133,7 +133,8 @@ func NewStack(ctx context.Context, t *testing.T, opts ...Option) (*Stack, error)
 		WaitForService("blockchain", wait.ForListeningPort("8545/tcp").WithStartupTimeout(2*time.Minute)).
 		WaitForService("upload", wait.ForHTTP("/health").WithPort("80/tcp").WithStartupTimeout(2*time.Minute)).
 		WaitForService("indexer", wait.ForHTTP("/").WithPort("80/tcp").WithStartupTimeout(2*time.Minute)).
-		WaitForService("delegator", wait.ForHTTP("/healthcheck").WithPort("80/tcp").WithStartupTimeout(2*time.Minute))
+		WaitForService("delegator", wait.ForHTTP("/healthcheck").WithPort("80/tcp").WithStartupTimeout(2*time.Minute)).
+		WaitForService("email", wait.ForHTTP("/api/server").WithPort("80/tcp").WithStartupTimeout(2*time.Minute))
 
 	// Add wait strategies for shared piri storage backend services
 	needsPostgres := false
@@ -293,6 +294,23 @@ func (s *Stack) PiriEndpointN(index int) string {
 // PiriCount returns the number of piri nodes in the stack.
 func (s *Stack) PiriCount() int {
 	return len(s.piriNodes)
+}
+
+// EmailEndpoint returns the HTTP API endpoint for the email service.
+func (s *Stack) EmailEndpoint() string {
+	container, err := s.compose.ServiceContainer(context.Background(), "email")
+	if err != nil {
+		s.t.Fatalf("getting email container: %v", err)
+	}
+	host, err := container.Host(context.Background())
+	if err != nil {
+		s.t.Fatalf("getting email host: %v", err)
+	}
+	port, err := container.MappedPort(context.Background(), "80/tcp")
+	if err != nil {
+		s.t.Fatalf("getting email port: %v", err)
+	}
+	return fmt.Sprintf("http://%s:%s", host, port.Port())
 }
 
 // generateBinaryOverride creates a compose override file that mounts local binaries
