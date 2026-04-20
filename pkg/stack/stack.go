@@ -136,28 +136,6 @@ func NewStack(ctx context.Context, t *testing.T, opts ...Option) (*Stack, error)
 		WaitForService("delegator", wait.ForHTTP("/healthcheck").WithPort("80/tcp").WithStartupTimeout(2*time.Minute)).
 		WaitForService("email", wait.ForHTTP("/api/server").WithPort("80/tcp").WithStartupTimeout(2*time.Minute))
 
-	// Add wait strategies for shared piri storage backend services
-	needsPostgres := false
-	needsS3 := false
-	for _, node := range resolvedNodes {
-		if node.Storage.DB == manifest.DBPostgres {
-			needsPostgres = true
-		}
-		if node.Storage.Blob == manifest.BlobS3 {
-			needsS3 = true
-		}
-	}
-	if needsPostgres {
-		waitStack = waitStack.WaitForService("piri-postgres",
-			wait.ForSQL("5432/tcp", "postgres", func(host string, port string) string {
-				return fmt.Sprintf("postgres://piri:piri@%s:%s/piri?sslmode=disable", host, port)
-			}).WithStartupTimeout(1*time.Minute))
-	}
-	if needsS3 {
-		waitStack = waitStack.WaitForService("piri-minio",
-			wait.ForHTTP("/minio/health/ready").WithPort("9000/tcp").WithStartupTimeout(1*time.Minute))
-	}
-
 	// Wait for all piri nodes
 	for _, node := range resolvedNodes {
 		waitStack = waitStack.WaitForService(node.Name,

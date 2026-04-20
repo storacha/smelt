@@ -48,7 +48,24 @@ func TestUploadAndRetrieve(t *testing.T) {
 
 	ctx := t.Context()
 
-	s := stack.MustNewStack(t, stack.WithGuppyImage("ghcr.io/storacha/guppy:main-dev"))
+	s := stack.MustNewStack(
+		t,
+		stack.WithGuppyImage("ghcr.io/storacha/guppy:main-dev"),
+		stack.WithPiriNodes(
+			stack.PiriNodeConfig{
+				Postgres: false,
+				S3:       false,
+			},
+			stack.PiriNodeConfig{
+				Postgres: true,
+				S3:       false,
+			},
+			stack.PiriNodeConfig{
+				Postgres: true,
+				S3:       true,
+			},
+		),
+	)
 	t.Log("Stack started successfully")
 
 	gup := guppy.MustNewContainerClient(t, s)
