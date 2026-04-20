@@ -55,7 +55,11 @@ func NewContainerClient(stack *stack.Stack, options ...Option) (*ContainerClient
 		option(c)
 	}
 	if c.validator == nil {
-		validator, err := NewSMTP4DevLoginValidator(stack.EmailEndpoint())
+		// Talk to smtp4dev and POST validation links from inside the
+		// Docker network via curl in the guppy container. Keeps the test
+		// self-contained: no host port mappings required.
+		doer := &ExecDoer{Stack: stack, Service: "guppy"}
+		validator, err := NewSMTP4DevLoginValidator("http://email", WithSMTP4DevLoginValidatorDoer(doer))
 		if err != nil {
 			return nil, err
 		}

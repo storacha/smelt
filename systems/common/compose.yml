@@ -42,6 +42,8 @@ services:
     image: rnwood/smtp4dev:v3
     networks:
       - storacha-network
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:80/api/server"]
 
 volumes:
   minio-data:

@@ -12,6 +12,13 @@ import (
 	"github.com/google/uuid"
 )
 
+// HTTPDoer issues HTTP requests. It matches [http.Client.Do] so an
+// *http.Client satisfies it, and custom transports (eg. one that runs
+// curl inside a container) can too.
+type HTTPDoer interface {
+	Do(req *http.Request) (*http.Response, error)
+}
+
 type messagesConfig struct {
 	page     int
 	pageSize int
@@ -33,15 +40,17 @@ func WithPageSize(pageSize int) MessagesOption {
 
 type Option func(*Client)
 
-func WithHTTPClient(httpClient *http.Client) Option {
+// WithDoer configures the client to use a custom HTTP doer. Defaults to
+// [http.DefaultClient].
+func WithDoer(doer HTTPDoer) Option {
 	return func(c *Client) {
-		c.client = httpClient
+		c.doer = doer
 	}
 }
 
 type Client struct {
 	endpoint url.URL
-	client   *http.Client
+	doer     HTTPDoer
 }
 
 // New creates a new SMTP4Dev client for the given API endpoint.
@@ -51,7 +60,7 @@ func New(endpoint string, options ...Option) (*Client, error) {
 	if err != nil {
 		return nil, err
 	}
-	client := &Client{endpoint: *parsedURL, client: http.DefaultClient}
+	client := &Client{endpoint: *parsedURL, doer: http.DefaultClient}
 	for _, option := range options {
 		option(client)
 	}
@@ -71,17 +80,17 @@ func (c *Client) Messages(ctx context.Context, options ...MessagesOption) (Messa
 	query.Set("pageSize", strconv.Itoa(config.pageSize))
 	url.RawQuery = query.Encode()
 
-	return jsonRequest[MessagePage](ctx, c.client, http.MethodGet, url.String(), nil)
+	return jsonRequest[MessagePage](ctx, c.doer, http.MethodGet, url.String(), nil)
 }
 
 func (c *Client) Message(ctx context.Context, id uuid.UUID) (Message, error) {
 	url := c.endpoint.JoinPath("api", "messages", id.String())
-	return jsonRequest[Message](ctx, c.client, http.MethodGet, url.String(), nil)
+	return jsonRequest[Message](ctx, c.doer, http.MethodGet, url.String(), nil)
 }
 
 func (c *Client) DeleteMessage(ctx context.Context, id uuid.UUID) error {
 	url := c.endpoint.JoinPath("api", "messages", id.String())
-	_, err := request(ctx, c.client, http.MethodDelete, url.String(), nil)
+	_, err := request(ctx, c.doer, http.MethodDelete, url.String(), nil)
 	return err
 }
 
@@ -89,19 +98,19 @@ func (c *Client) DeleteMessage(ctx context.Context, id uuid.UUID) error {
 // given ID if there is one.
 func (c *Client) MessageBodyPlainText(ctx context.Context, id uuid.UUID) (string, error) {
 	url := c.endpoint.JoinPath("api", "messages", id.String(), "plaintext")
-	body, err := request(ctx, c.client, http.MethodGet, url.String(), nil)
+	body, err := request(ctx, c.doer, http.MethodGet, url.String(), nil)
 	if err != nil {
 		return "", err
 	}
 	return string(body), nil
 }
 
-func request(ctx context.Context, client *http.Client, method string, url string, body io.Reader) ([]byte, error) {
+func request(ctx context.Context, doer HTTPDoer, method string, url string, body io.Reader) ([]byte, error) {
 	req, err := http.NewRequestWithContext(ctx, method, url, body)
 	if err != nil {
 		return nil, fmt.Errorf("creating request: %w", err)
 	}
-	res, err := client.Do(req)
+	res, err := doer.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("sending request: %w", err)
 	}
@@ -116,9 +125,9 @@ func request(ctx context.Context, client *http.Client, method string, url string
 	return buf, nil
 }
 
-func jsonRequest[T any](ctx context.Context, client *http.Client, method string, url string, body io.Reader) (T, error) {
+func jsonRequest[T any](ctx context.Context, doer HTTPDoer, method string, url string, body io.Reader) (T, error) {
 	var zero T
-	resBody, err := request(ctx, client, method, url, body)
+	resBody, err := request(ctx, doer, method, url, body)
 	if err != nil {
 		return zero, err
 	}
