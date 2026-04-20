@@ -10,10 +10,10 @@ const (
 	// accounts 2-9 = piri-1 through piri-8.
 	MaxPiriNodes = 9
 
-	DBSQLite     = "sqlite"
-	DBPostgres   = "postgres"
-	BlobFS       = "filesystem"
-	BlobS3       = "s3"
+	DBSQLite   = "sqlite"
+	DBPostgres = "postgres"
+	BlobFS     = "filesystem"
+	BlobS3     = "s3"
 )
 
 // Manifest is the top-level smelt.yml schema.

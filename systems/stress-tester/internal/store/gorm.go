@@ -328,10 +328,10 @@ func (s *GORMStore) GetRetrievalStats(ctx context.Context, instanceID uint) (*Re
 
 	// Get basic stats
 	type basicStats struct {
-		Total      int64
-		Success    int64
-		AvgDurMs   float64
-		LastTime   *string
+		Total    int64
+		Success  int64
+		AvgDurMs float64
+		LastTime *string
 	}
 	var basic basicStats
 

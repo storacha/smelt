@@ -2,26 +2,66 @@ package guppy
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"regexp"
 	"strings"
+	"testing"
 	"time"
 
 	"github.com/storacha/smelt/pkg/stack"
+	"golang.org/x/sync/errgroup"
 )
+
+var errAlreadyLoggedIn = fmt.Errorf("already logged in")
+
+type LoginValidator interface {
+	// ValidateEmailLogin waits for a validation email to be sent to the given
+	// address, extracts the validation link, and clicks it. Use the passed
+	// context to stop waiting.
+	ValidateEmailLogin(ctx context.Context, email string) error
+}
+
+type Option func(*ContainerClient)
+
+func WithLoginValidator(validator LoginValidator) Option {
+	return func(c *ContainerClient) {
+		c.validator = validator
+	}
+}
 
 // Compile-time check that ContainerClient implements guppy.Client.
 var _ Client = (*ContainerClient)(nil)
 
 // ContainerClient implements guppy.Client by executing commands inside the guppy container.
 type ContainerClient struct {
-	stack *stack.Stack
+	stack     *stack.Stack
+	validator LoginValidator
 }
 
-func NewContainerClient(stack *stack.Stack) *ContainerClient {
-	return &ContainerClient{
+func MustNewContainerClient(t *testing.T, stack *stack.Stack, options ...Option) *ContainerClient {
+	c, err := NewContainerClient(stack, options...)
+	if err != nil {
+		t.Fatalf("failed to create guppy client: %v", err)
+	}
+	return c
+}
+
+func NewContainerClient(stack *stack.Stack, options ...Option) (*ContainerClient, error) {
+	c := &ContainerClient{
 		stack: stack,
 	}
+	for _, option := range options {
+		option(c)
+	}
+	if c.validator == nil {
+		validator, err := NewSMTP4DevLoginValidator(stack.EmailEndpoint())
+		if err != nil {
+			return nil, err
+		}
+		c.validator = validator
+	}
+	return c, nil
 }
 
 func (c *ContainerClient) exec(ctx context.Context, args ...string) (stdout, stderr string, err error) {
@@ -34,18 +74,47 @@ func (c *ContainerClient) guppyExec(ctx context.Context, args ...string) (stdout
 }
 
 // Login logs in with the given email.
-func (c *ContainerClient) Login(ctx context.Context, email string) error {
-	stdout, _, err := c.guppyExec(ctx, "login", email)
-	if err != nil {
-		return err
+func (c *ContainerClient) Login(ctx context.Context, email string, options ...LoginOption) error {
+	config := &loginConfig{}
+	for _, option := range options {
+		option(config)
+	}
+	if config.timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, config.timeout)
+		defer cancel()
 	}
 
-	// Check for success indicators
-	if !strings.Contains(stdout, "Successfully logged in") && !strings.Contains(stdout, "already logged in") {
-		return fmt.Errorf("login may have failed, output: %s", stdout)
-	}
+	g, ctx := errgroup.WithContext(ctx)
+	ctx, cancel := context.WithCancelCause(ctx)
 
-	return nil
+	g.Go(func() error {
+		stdout, _, err := c.guppyExec(ctx, "login", email)
+		if err != nil {
+			return err
+		}
+		if strings.Contains(stdout, "already logged in") {
+			// cancel trying to validate the email - no email is being sent
+			cancel(errAlreadyLoggedIn)
+			return nil
+		}
+		if !strings.Contains(stdout, "Successfully logged in") {
+			return fmt.Errorf("login may have failed, output: %s", stdout)
+		}
+		return nil
+	})
+
+	g.Go(func() error {
+		err := c.validator.ValidateEmailLogin(ctx, email)
+		if err != nil {
+			if !errors.Is(context.Cause(ctx), errAlreadyLoggedIn) {
+				return err
+			}
+		}
+		return nil
+	})
+
+	return g.Wait()
 }
 
 // GenerateSpace creates a new space and returns its DID.
@@ -73,8 +142,19 @@ func (c *ContainerClient) AddSource(ctx context.Context, spaceDID, path string) 
 }
 
 // Upload uploads all sources in a space and returns the CIDs.
-func (c *ContainerClient) Upload(ctx context.Context, spaceDID string) ([]string, error) {
-	stdout, _, err := c.guppyExec(ctx, "upload", spaceDID)
+func (c *ContainerClient) Upload(ctx context.Context, spaceDID string, options ...UploadOption) ([]string, error) {
+	config := &uploadConfig{}
+	for _, option := range options {
+		option(config)
+	}
+
+	args := []string{"upload"}
+	if config.replicas > 0 {
+		args = append(args, "--replicas", fmt.Sprintf("%d", config.replicas))
+	}
+	args = append(args, spaceDID)
+
+	stdout, _, err := c.guppyExec(ctx, args...)
 	if err != nil {
 		return nil, err
 	}

@@ -23,8 +23,8 @@ import (
 	"time"
 
 	"github.com/docker/docker/pkg/stdcopy"
-	"github.com/docker/go-connections/nat"
 	_ "github.com/lib/pq" // postgres driver for wait.ForSQL
+	"github.com/testcontainers/testcontainers-go/exec"
 	"github.com/testcontainers/testcontainers-go/modules/compose"
 	"github.com/testcontainers/testcontainers-go/wait"
 
@@ -133,29 +133,8 @@ func NewStack(ctx context.Context, t *testing.T, opts ...Option) (*Stack, error)
 		WaitForService("blockchain", wait.ForListeningPort("8545/tcp").WithStartupTimeout(2*time.Minute)).
 		WaitForService("upload", wait.ForHTTP("/health").WithPort("80/tcp").WithStartupTimeout(2*time.Minute)).
 		WaitForService("indexer", wait.ForHTTP("/").WithPort("80/tcp").WithStartupTimeout(2*time.Minute)).
-		WaitForService("delegator", wait.ForHTTP("/healthcheck").WithPort("80/tcp").WithStartupTimeout(2*time.Minute))
-
-	// Add wait strategies for shared piri storage backend services
-	needsPostgres := false
-	needsS3 := false
-	for _, node := range resolvedNodes {
-		if node.Storage.DB == manifest.DBPostgres {
-			needsPostgres = true
-		}
-		if node.Storage.Blob == manifest.BlobS3 {
-			needsS3 = true
-		}
-	}
-	if needsPostgres {
-		waitStack = waitStack.WaitForService("piri-postgres",
-			wait.ForSQL("5432/tcp", "postgres", func(host string, port nat.Port) string {
-				return fmt.Sprintf("postgres://piri:piri@%s:%s/piri?sslmode=disable", host, port.Port())
-			}).WithStartupTimeout(1*time.Minute))
-	}
-	if needsS3 {
-		waitStack = waitStack.WaitForService("piri-minio",
-			wait.ForHTTP("/minio/health/ready").WithPort("9000/tcp").WithStartupTimeout(1*time.Minute))
-	}
+		WaitForService("delegator", wait.ForHTTP("/healthcheck").WithPort("80/tcp").WithStartupTimeout(2*time.Minute)).
+		WaitForService("email", wait.ForHTTP("/api/server").WithPort("80/tcp").WithStartupTimeout(2*time.Minute))
 
 	// Wait for all piri nodes
 	for _, node := range resolvedNodes {
@@ -239,7 +218,7 @@ func (s *Stack) Exec(ctx context.Context, service string, args ...string) (stdou
 		return "", "", fmt.Errorf("get container for %s: %w", service, err)
 	}
 
-	exitCode, reader, err := container.Exec(ctx, args)
+	exitCode, reader, err := container.Exec(ctx, args, exec.WithUser("root"))
 	if err != nil {
 		return "", "", fmt.Errorf("exec command: %w", err)
 	}
@@ -293,6 +272,23 @@ func (s *Stack) PiriEndpointN(index int) string {
 // PiriCount returns the number of piri nodes in the stack.
 func (s *Stack) PiriCount() int {
 	return len(s.piriNodes)
+}
+
+// EmailEndpoint returns the HTTP API endpoint for the email service.
+func (s *Stack) EmailEndpoint() string {
+	container, err := s.compose.ServiceContainer(context.Background(), "email")
+	if err != nil {
+		s.t.Fatalf("getting email container: %v", err)
+	}
+	host, err := container.Host(context.Background())
+	if err != nil {
+		s.t.Fatalf("getting email host: %v", err)
+	}
+	port, err := container.MappedPort(context.Background(), "80/tcp")
+	if err != nil {
+		s.t.Fatalf("getting email port: %v", err)
+	}
+	return fmt.Sprintf("http://%s:%s", host, port.Port())
 }
 
 // generateBinaryOverride creates a compose override file that mounts local binaries

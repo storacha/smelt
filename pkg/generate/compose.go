@@ -121,7 +121,7 @@ func buildPiriService(node manifest.ResolvedPiriNode) ComposeService {
 			"upload":          {Condition: "service_healthy"},
 		},
 		Healthcheck: &Healthcheck{
-			Test:        []string{"CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:3000/readyz"},
+			Test:        []string{"CMD-SHELL", `wget -q -O - http://localhost:3000/readyz | grep -q '"status":\s*"ok"'`},
 			Interval:    "10s",
 			Timeout:     "5s",
 			Retries:     30,
@@ -212,17 +212,17 @@ type ComposeFile struct {
 
 // ComposeService represents a Docker Compose service definition.
 type ComposeService struct {
-	Image       string                         `yaml:"image,omitempty"`
-	User        string                         `yaml:"user,omitempty"`
-	Ports       []string                       `yaml:"ports,omitempty"`
-	Volumes     []string                       `yaml:"volumes,omitempty"`
-	Entrypoint  []string                       `yaml:"entrypoint,omitempty"`
-	Command     []string                       `yaml:"command,omitempty"`
-	Environment []string                       `yaml:"environment,omitempty"`
-	DependsOn   map[string]DependsOnCondition  `yaml:"depends_on,omitempty"`
-	Healthcheck *Healthcheck                   `yaml:"healthcheck,omitempty"`
-	Restart     string                         `yaml:"restart,omitempty"`
-	Networks    []string                       `yaml:"networks,omitempty"`
+	Image       string                        `yaml:"image,omitempty"`
+	User        string                        `yaml:"user,omitempty"`
+	Ports       []string                      `yaml:"ports,omitempty"`
+	Volumes     []string                      `yaml:"volumes,omitempty"`
+	Entrypoint  []string                      `yaml:"entrypoint,omitempty"`
+	Command     []string                      `yaml:"command,omitempty"`
+	Environment []string                      `yaml:"environment,omitempty"`
+	DependsOn   map[string]DependsOnCondition `yaml:"depends_on,omitempty"`
+	Healthcheck *Healthcheck                  `yaml:"healthcheck,omitempty"`
+	Restart     string                        `yaml:"restart,omitempty"`
+	Networks    []string                      `yaml:"networks,omitempty"`
 }
 
 // DependsOnCondition specifies the condition for a depends_on entry.
