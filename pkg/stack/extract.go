@@ -9,18 +9,21 @@ import (
 	"github.com/storacha/smelt"
 )
 
-// extractFiles extracts all embedded files to a temp directory,
+// extractFiles extracts all embedded files to a test temp directory,
 // maintaining the exact directory structure required for compose.
 func extractFiles(t *testing.T) (string, error) {
-	tempDir := t.TempDir() // Automatically cleaned up by testing framework
+	return extractFilesToDir(t.TempDir())
+}
 
+// extractFilesToDir extracts all embedded files to the given directory.
+func extractFilesToDir(dir string) (string, error) {
 	// Walk the embedded filesystem and copy all files
 	err := fs.WalkDir(smelt.EmbeddedFiles, ".", func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
 
-		destPath := filepath.Join(tempDir, path)
+		destPath := filepath.Join(dir, path)
 
 		if d.IsDir() {
 			return os.MkdirAll(destPath, 0755)
@@ -51,11 +54,11 @@ func extractFiles(t *testing.T) (string, error) {
 
 	// Create the generated directory structure for keys and proofs
 	generatedDirs := []string{
-		filepath.Join(tempDir, "generated", "keys"),
-		filepath.Join(tempDir, "generated", "proofs"),
+		filepath.Join(dir, "generated", "keys"),
+		filepath.Join(dir, "generated", "proofs"),
 	}
-	for _, dir := range generatedDirs {
-		if err := os.MkdirAll(dir, 0755); err != nil {
+	for _, d := range generatedDirs {
+		if err := os.MkdirAll(d, 0755); err != nil {
 			return "", err
 		}
 	}
@@ -75,5 +78,5 @@ func extractFiles(t *testing.T) (string, error) {
 			}
 	*/
 
-	return tempDir, nil
+	return dir, nil
 }

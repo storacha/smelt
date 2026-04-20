@@ -50,10 +50,25 @@ func NewStack(ctx context.Context, t *testing.T, opts ...Option) (*Stack, error)
 		opt(cfg)
 	}
 
-	// 1. Extract embedded files to temp directory
-	tempDir, err := extractFiles(t)
-	if err != nil {
-		return nil, fmt.Errorf("extract files: %w", err)
+	// 1. Extract embedded files
+	var tempDir string
+	if cfg.keep {
+		// Disable Ryuk (testcontainers' reaper) so containers survive after the test process exits.
+		t.Setenv("TESTCONTAINERS_RYUK_DISABLED", "true")
+
+		tempDir = filepath.Join(os.TempDir(), "smelt-stack")
+		if err := os.MkdirAll(tempDir, 0755); err != nil {
+			return nil, fmt.Errorf("create stable dir: %w", err)
+		}
+		if _, err := extractFilesToDir(tempDir); err != nil {
+			return nil, fmt.Errorf("extract files: %w", err)
+		}
+	} else {
+		var err error
+		tempDir, err = extractFiles(t)
+		if err != nil {
+			return nil, fmt.Errorf("extract files: %w", err)
+		}
 	}
 
 	// 2. Resolve piri node configuration and generate compose + keys.
@@ -110,8 +125,12 @@ func NewStack(ctx context.Context, t *testing.T, opts ...Option) (*Stack, error)
 	}
 
 	// 7. Create compose stack with optional profiles
+	stackID := "smeltery-" + sanitizeTestName(t.Name())
+	if cfg.keep {
+		stackID = "smeltery"
+	}
 	composeOpts := []compose.ComposeStackOption{
-		compose.StackIdentifier("smeltery-" + sanitizeTestName(t.Name())),
+		compose.StackIdentifier(stackID),
 		compose.WithStackFiles(composeFiles...),
 	}
 
@@ -143,13 +162,19 @@ func NewStack(ctx context.Context, t *testing.T, opts ...Option) (*Stack, error)
 			wait.ForHealthCheck().WithStartupTimeout(3*time.Minute))
 	}
 
-	err = waitStack.Up(startCtx, compose.Wait(true))
+	upOpts := []compose.StackUpOption{compose.Wait(true)}
+	if cfg.keep {
+		upOpts = append(upOpts, compose.WithRecreate("diverged"))
+	}
+	err = waitStack.Up(startCtx, upOpts...)
 	if err != nil {
-		// Clean up containers on startup failure
-		_ = composeStack.Down(ctx,
-			compose.RemoveOrphans(true),
-			compose.RemoveVolumes(true),
-		)
+		// Clean up containers on startup failure (but not in keep mode)
+		if !cfg.keep {
+			_ = composeStack.Down(ctx,
+				compose.RemoveOrphans(true),
+				compose.RemoveVolumes(true),
+			)
+		}
 		return nil, fmt.Errorf("start stack: %w", err)
 	}
 
@@ -162,13 +187,17 @@ func NewStack(ctx context.Context, t *testing.T, opts ...Option) (*Stack, error)
 	}
 
 	// 9. Register cleanup
-	t.Cleanup(func() {
-		if cfg.keepOnFailure && t.Failed() {
-			t.Logf("smeltery: keeping stack running due to test failure (tempDir: %s)", tempDir)
-			return
-		}
-		stack.Close(ctx)
-	})
+	if cfg.keep {
+		t.Logf("smeltery: SMELT_KEEP is set, stack will persist after test (dir: %s, project: %s)", tempDir, stackID)
+	} else {
+		t.Cleanup(func() {
+			if cfg.keepOnFailure && t.Failed() {
+				t.Logf("smeltery: keeping stack running due to test failure (tempDir: %s)", tempDir)
+				return
+			}
+			stack.Close(context.Background())
+		})
+	}
 
 	return stack, nil
 }
