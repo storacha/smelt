@@ -2,6 +2,7 @@ package guppy
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"regexp"
@@ -137,6 +138,28 @@ func (c *ContainerClient) GenerateSpace(ctx context.Context) (string, error) {
 	}
 
 	return spaceDID, nil
+}
+
+type SpaceInfo struct {
+	DID       string   `json:"Did"`
+	Providers []string `json:"Providers"`
+}
+
+// GetSpaceInfo retrieves information about a space, such as its DID and providers.
+func (c *ContainerClient) GetSpaceInfo(ctx context.Context, spaceDID string) (SpaceInfo, error) {
+	stdout, _, err := c.guppyExec(ctx, "space", "info", "--json", spaceDID)
+	if err != nil {
+		return SpaceInfo{}, err
+	}
+	// eg:
+	// `{"Did":"did:key:z6MktcYr3yVnxCsGA2KLsNVu51ctawocuDeeXVzaYc2Da4RM","Providers":["did:web:up.forge.storacha.network"]}`
+	var info SpaceInfo
+	err = json.Unmarshal([]byte(stdout), &info)
+	if err != nil {
+		return SpaceInfo{}, fmt.Errorf("parse space info: %w", err)
+	}
+
+	return info, nil
 }
 
 // AddSource adds a source directory to a space.
