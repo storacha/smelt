@@ -42,3 +42,8 @@ services:
   upload:
     ports:
       - "8080:80"
+    # Match public_url to the host-published port so validation links in
+    # emails are clickable from the host browser. Overrides the default
+    # in systems/upload/config/config.yaml.
+    environment:
+      SPRUE_SERVER_PUBLIC_URL: "http://localhost:8080"
