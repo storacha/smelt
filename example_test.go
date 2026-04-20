@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ipfs/go-cid"
 	"github.com/stretchr/testify/require"
 
 	docker_client "github.com/docker/docker/client"
@@ -90,10 +91,18 @@ func TestUploadAndRetrieve(t *testing.T) {
 	require.NoError(t, err)
 	t.Log("Added source")
 
-	cids, err := gup.Upload(ctx, spaceDID, guppy.WithReplicas(1))
+	uploads, err := gup.Upload(ctx, spaceDID, guppy.WithReplicas(1))
 	require.NoError(t, err)
-	if len(cids) == 0 {
-		t.Fatal("expected at least one CID from upload")
+
+	cids := make([]string, len(uploads))
+	for i, upload := range uploads {
+		cids[i] = upload.CID
+		_, err := cid.Decode(upload.CID)
+		require.NoError(t, err, "invalid CID returned from upload")
+	}
+
+	if len(uploads) == 0 {
+		t.Fatal("expected at least one upload")
 	}
 	t.Logf("Uploaded CIDs: %v", cids)
 

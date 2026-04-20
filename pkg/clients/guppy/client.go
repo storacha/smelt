@@ -42,12 +42,12 @@ type Client interface {
 	AddSource(ctx context.Context, spaceDID, path string) error
 
 	// Upload uploads all sources in a space and returns the CIDs.
-	Upload(ctx context.Context, spaceDID string, options ...UploadOption) (cids []string, err error)
+	Upload(ctx context.Context, spaceDID string, options ...UploadOption) (uploads []UploadInfo, err error)
 
 	// Retrieve downloads content by CID to a destination path.
 	Retrieve(ctx context.Context, spaceDID, cid, destPath string) error
 
 	// GenerateTestData creates random test data and returns the path.
 	// This is useful for testing - it uses randdir to create test files.
-	GenerateTestData(ctx context.Context, size string) (path string, err error)
+	GenerateTestData(ctx context.Context, size string, opts ...GenerateTestDataOption) (path string, err error)
 }
