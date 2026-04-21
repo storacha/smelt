@@ -12,37 +12,40 @@ import (
 )
 
 type clickerConfig struct {
-	httpClient *http.Client
+	doer smtp4dev.HTTPDoer
 }
 
 type SMTP4DevLoginValidatorOption func(*clickerConfig)
 
-func WithSMTP4DevLoginValidatorHTTPClient(httpClient *http.Client) SMTP4DevLoginValidatorOption {
+// WithSMTP4DevLoginValidatorDoer configures the HTTP doer used for both
+// smtp4dev API calls and POSTing the validation link. Defaults to
+// [http.DefaultClient].
+func WithSMTP4DevLoginValidatorDoer(doer smtp4dev.HTTPDoer) SMTP4DevLoginValidatorOption {
 	return func(c *clickerConfig) {
-		c.httpClient = httpClient
+		c.doer = doer
 	}
 }
 
 type SMTP4DevLoginValidator struct {
-	Client     *smtp4dev.Client
-	HTTPClient *http.Client
+	Client *smtp4dev.Client
+	Doer   smtp4dev.HTTPDoer
 }
 
 // NewSMTP4DevLoginValidator returns a new [SMTP4DevLoginValidator] that can
 // be used to validate logins by clicking links in emails sent to a SMTP4Dev
 // server.
 func NewSMTP4DevLoginValidator(endpoint string, options ...SMTP4DevLoginValidatorOption) (*SMTP4DevLoginValidator, error) {
-	cfg := clickerConfig{httpClient: http.DefaultClient}
+	cfg := clickerConfig{doer: http.DefaultClient}
 	for _, option := range options {
 		option(&cfg)
 	}
-	client, err := smtp4dev.New(endpoint, smtp4dev.WithHTTPClient(cfg.httpClient))
+	client, err := smtp4dev.New(endpoint, smtp4dev.WithDoer(cfg.doer))
 	if err != nil {
 		return nil, err
 	}
 	return &SMTP4DevLoginValidator{
-		Client:     client,
-		HTTPClient: cfg.httpClient,
+		Client: client,
+		Doer:   cfg.doer,
 	}, nil
 }
 
@@ -79,11 +82,16 @@ func (ec *SMTP4DevLoginValidator) ValidateEmailLogin(ctx context.Context, email 
 				if err != nil {
 					continue
 				}
-				res, err := ec.HTTPClient.Post(link.String(), "text/plain", nil)
+				req, err := http.NewRequestWithContext(ctx, http.MethodPost, link.String(), nil)
+				if err != nil {
+					return fmt.Errorf("creating validation request: %w", err)
+				}
+				req.Header.Set("Content-Type", "text/plain")
+				res, err := ec.Doer.Do(req)
 				if err != nil {
 					return fmt.Errorf("clicking validation link: %w", err)
 				}
-				defer res.Body.Close()
+				res.Body.Close()
 				if res.StatusCode < 200 || res.StatusCode >= 300 {
 					return fmt.Errorf("clicking validation link: received status code %d", res.StatusCode)
 				}

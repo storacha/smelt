@@ -7,8 +7,6 @@ services:
   # Redis - Cache backend for indexing service
   redis:
     image: redis:7-alpine
-    ports:
-      - "6379:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -22,8 +20,6 @@ services:
   indexer:
     image: ${INDEXER_IMAGE:-ghcr.io/storacha/indexing-service:main}
     user: "0:0"  # Run as root for volume permissions (key files are 600)
-    ports:
-      - "9000:80"  # Host 9000 -> container 80
     volumes:
       - ../../../generated/keys:/keys:ro
     environment:

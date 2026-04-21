@@ -117,6 +117,12 @@ make fresh     # Delete everything and rebuild (destructive)
 make clean     # Stop and delete volumes only (keeps keys)
 ```
 
+To start services without exposing host ports (useful when ports conflict with other processes):
+
+```bash
+NOPORTS=1 make up
+```
+
 ### Viewing Status and Logs
 
 ```bash
@@ -284,6 +290,8 @@ s.PiriCount()         // number of nodes
 | piri-minio | 9003 | HTTP | MinIO console |
 
 Note: Some services use different internal vs external ports (e.g., piri listens on 3000 internally, exposed as 4000+N).
+
+Host port mappings are defined in `compose.ports.yml` (static services) and `generated/compose/piri.ports.yml` (piri nodes). They are layered on by default but can be disabled with `NOPORTS=1 make up`. Inter-service communication uses Docker network DNS and is unaffected.
 
 ## Configuration Files
 

@@ -7,8 +7,6 @@ services:
   signing-service:
     image: ${SIGNER_IMAGE:-ghcr.io/storacha/piri-signing-service:main}
     user: root
-    ports:
-      - "7446:7446"
     volumes:
       - ../../generated/keys/payer-key.hex:/keys/payer-key.hex:ro
       - ../../generated/keys/signing-service.pem:/keys/signing-service.pem:ro

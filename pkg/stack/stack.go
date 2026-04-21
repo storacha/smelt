@@ -22,6 +22,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/containerd/errdefs"
 	"github.com/docker/docker/pkg/stdcopy"
 	_ "github.com/lib/pq" // postgres driver for wait.ForSQL
 	"github.com/testcontainers/testcontainers-go/exec"
@@ -49,10 +50,25 @@ func NewStack(ctx context.Context, t *testing.T, opts ...Option) (*Stack, error)
 		opt(cfg)
 	}
 
-	// 1. Extract embedded files to temp directory
-	tempDir, err := extractFiles(t)
-	if err != nil {
-		return nil, fmt.Errorf("extract files: %w", err)
+	// 1. Extract embedded files
+	var tempDir string
+	if cfg.keep {
+		// Disable Ryuk (testcontainers' reaper) so containers survive after the test process exits.
+		t.Setenv("TESTCONTAINERS_RYUK_DISABLED", "true")
+
+		tempDir = filepath.Join(os.TempDir(), "smelt-stack")
+		if err := os.MkdirAll(tempDir, 0755); err != nil {
+			return nil, fmt.Errorf("create stable dir: %w", err)
+		}
+		if _, err := extractFilesToDir(tempDir); err != nil {
+			return nil, fmt.Errorf("extract files: %w", err)
+		}
+	} else {
+		var err error
+		tempDir, err = extractFiles(t)
+		if err != nil {
+			return nil, fmt.Errorf("extract files: %w", err)
+		}
 	}
 
 	// 2. Resolve piri node configuration and generate compose + keys.
@@ -109,8 +125,12 @@ func NewStack(ctx context.Context, t *testing.T, opts ...Option) (*Stack, error)
 	}
 
 	// 7. Create compose stack with optional profiles
+	stackID := "smeltery-" + sanitizeTestName(t.Name())
+	if cfg.keep {
+		stackID = "smeltery"
+	}
 	composeOpts := []compose.ComposeStackOption{
-		compose.StackIdentifier("smeltery-" + sanitizeTestName(t.Name())),
+		compose.StackIdentifier(stackID),
 		compose.WithStackFiles(composeFiles...),
 	}
 
@@ -127,28 +147,34 @@ func NewStack(ctx context.Context, t *testing.T, opts ...Option) (*Stack, error)
 		defer cancel()
 	}
 
-	// Build wait strategies for core services
+	// Build wait strategies using Docker healthchecks (no host port mappings needed)
 	waitStack := composeStack.
 		WithEnv(env).
-		WaitForService("blockchain", wait.ForListeningPort("8545/tcp").WithStartupTimeout(2*time.Minute)).
-		WaitForService("upload", wait.ForHTTP("/health").WithPort("80/tcp").WithStartupTimeout(2*time.Minute)).
-		WaitForService("indexer", wait.ForHTTP("/").WithPort("80/tcp").WithStartupTimeout(2*time.Minute)).
-		WaitForService("delegator", wait.ForHTTP("/healthcheck").WithPort("80/tcp").WithStartupTimeout(2*time.Minute)).
-		WaitForService("email", wait.ForHTTP("/api/server").WithPort("80/tcp").WithStartupTimeout(2*time.Minute))
+		WaitForService("blockchain", wait.ForHealthCheck().WithStartupTimeout(2*time.Minute)).
+		WaitForService("upload", wait.ForHealthCheck().WithStartupTimeout(2*time.Minute)).
+		WaitForService("indexer", wait.ForHealthCheck().WithStartupTimeout(2*time.Minute)).
+		WaitForService("delegator", wait.ForHealthCheck().WithStartupTimeout(2*time.Minute)).
+		WaitForService("email", wait.ForHealthCheck().WithStartupTimeout(2*time.Minute))
 
 	// Wait for all piri nodes
 	for _, node := range resolvedNodes {
 		waitStack = waitStack.WaitForService(node.Name,
-			wait.ForHTTP("/readyz").WithPort("3000/tcp").WithStartupTimeout(3*time.Minute))
+			wait.ForHealthCheck().WithStartupTimeout(3*time.Minute))
 	}
 
-	err = waitStack.Up(startCtx, compose.Wait(true))
+	upOpts := []compose.StackUpOption{compose.Wait(true)}
+	if cfg.keep {
+		upOpts = append(upOpts, compose.WithRecreate("diverged"))
+	}
+	err = waitStack.Up(startCtx, upOpts...)
 	if err != nil {
-		// Clean up containers on startup failure
-		_ = composeStack.Down(context.Background(),
-			compose.RemoveOrphans(true),
-			compose.RemoveVolumes(true),
-		)
+		// Clean up containers on startup failure (but not in keep mode)
+		if !cfg.keep {
+			_ = composeStack.Down(ctx,
+				compose.RemoveOrphans(true),
+				compose.RemoveVolumes(true),
+			)
+		}
 		return nil, fmt.Errorf("start stack: %w", err)
 	}
 
@@ -161,13 +187,17 @@ func NewStack(ctx context.Context, t *testing.T, opts ...Option) (*Stack, error)
 	}
 
 	// 9. Register cleanup
-	t.Cleanup(func() {
-		if cfg.keepOnFailure && t.Failed() {
-			t.Logf("smeltery: keeping stack running due to test failure (tempDir: %s)", tempDir)
-			return
-		}
-		stack.Close(context.Background())
-	})
+	if cfg.keep {
+		t.Logf("smeltery: SMELT_KEEP is set, stack will persist after test (dir: %s, project: %s)", tempDir, stackID)
+	} else {
+		t.Cleanup(func() {
+			if cfg.keepOnFailure && t.Failed() {
+				t.Logf("smeltery: keeping stack running due to test failure (tempDir: %s)", tempDir)
+				return
+			}
+			stack.Close(context.Background())
+		})
+	}
 
 	return stack, nil
 }
@@ -175,7 +205,7 @@ func NewStack(ctx context.Context, t *testing.T, opts ...Option) (*Stack, error)
 // MustNewStack creates and starts a network, calling t.Fatal on error.
 func MustNewStack(t *testing.T, opts ...Option) *Stack {
 	t.Helper()
-	stack, err := NewStack(context.Background(), t, opts...)
+	stack, err := NewStack(t.Context(), t, opts...)
 	if err != nil {
 		t.Fatalf("smeltery: failed to create stack: %v", err)
 	}
@@ -253,42 +283,30 @@ func (s *Stack) Close(ctx context.Context) error {
 
 // PiriEndpointN returns the HTTP endpoint for the Nth piri node.
 func (s *Stack) PiriEndpointN(index int) string {
+	ctx := s.t.Context()
 	name := fmt.Sprintf("piri-%d", index)
-	container, err := s.compose.ServiceContainer(context.Background(), name)
+	container, err := s.compose.ServiceContainer(ctx, name)
 	if err != nil {
 		s.t.Fatalf("get %s container: %v", name, err)
 	}
-	host, err := container.Host(context.Background())
+	host, err := container.Host(ctx)
 	if err != nil {
 		s.t.Fatalf("get %s host: %v", name, err)
 	}
-	port, err := container.MappedPort(context.Background(), "3000/tcp")
+	port, err := container.MappedPort(ctx, "3000/tcp")
 	if err != nil {
+		if errdefs.IsNotFound(err) {
+			s.t.Fatalf("service %q does not host-map its 3000/tcp port.", name)
+		}
 		s.t.Fatalf("get %s port: %v", name, err)
 	}
+	s.t.Logf("http://%s:%s", host, port.Port())
 	return fmt.Sprintf("http://%s:%s", host, port.Port())
 }
 
 // PiriCount returns the number of piri nodes in the stack.
 func (s *Stack) PiriCount() int {
 	return len(s.piriNodes)
-}
-
-// EmailEndpoint returns the HTTP API endpoint for the email service.
-func (s *Stack) EmailEndpoint() string {
-	container, err := s.compose.ServiceContainer(context.Background(), "email")
-	if err != nil {
-		s.t.Fatalf("getting email container: %v", err)
-	}
-	host, err := container.Host(context.Background())
-	if err != nil {
-		s.t.Fatalf("getting email host: %v", err)
-	}
-	port, err := container.MappedPort(context.Background(), "80/tcp")
-	if err != nil {
-		s.t.Fatalf("getting email port: %v", err)
-	}
-	return fmt.Sprintf("http://%s:%s", host, port.Port())
 }
 
 // generateBinaryOverride creates a compose override file that mounts local binaries

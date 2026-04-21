@@ -40,6 +40,7 @@ func runGenerate(cmd *cobra.Command, args []string) error {
 
 	fmt.Printf("Generated %d piri node(s)\n", result.NodeCount)
 	fmt.Printf("  Compose: %s\n", result.PiriComposePath)
-	fmt.Printf("  Keys: %s\n", result.KeysDir)
+	fmt.Printf("  Ports:   %s\n", result.PiriPortsComposePath)
+	fmt.Printf("  Keys:    %s\n", result.KeysDir)
 	return nil
 }

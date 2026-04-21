@@ -2,6 +2,7 @@ package stack
 
 import (
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/storacha/smelt/pkg/manifest"
@@ -34,11 +35,13 @@ type config struct {
 	// Stack configuration
 	timeout       time.Duration
 	keepOnFailure bool
+	keep          bool
 }
 
 func defaultConfig() *config {
 	return &config{
 		timeout: 5 * time.Minute, // Default 5 minute timeout for stack startup
+		keep:    os.Getenv("SMELT_KEEP") != "",
 	}
 }
 

@@ -8,7 +8,11 @@ deployment:
 server:
   host: "0.0.0.0"
   port: 80  # Use port 80 for did:web resolution
-  public_url: http://localhost:8080
+  # Default to the in-network URL so no host-port mapping is required (eg.
+  # stack tests). When compose.ports.yml is layered on (or any other file
+  # that publishes upload's port), it should set SPRUE_SERVER_PUBLIC_URL to
+  # match. See compose.ports.yml.
+  public_url: http://upload
 
 identity:
   key_file: "/keys/upload.pem"
