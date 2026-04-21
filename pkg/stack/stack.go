@@ -18,6 +18,8 @@ import (
 	"context"
 	"fmt"
 	"os"
+	osexec "os/exec"
+	"os/user"
 	"path/filepath"
 	"testing"
 	"time"
@@ -30,6 +32,7 @@ import (
 
 	"github.com/storacha/smelt/pkg/generate"
 	"github.com/storacha/smelt/pkg/manifest"
+	"github.com/storacha/smelt/pkg/snapshot"
 )
 
 // Stack represents a running Storacha network.
@@ -55,30 +58,80 @@ func NewStack(ctx context.Context, t *testing.T, opts ...Option) (*Stack, error)
 		return nil, fmt.Errorf("extract files: %w", err)
 	}
 
-	// 2. Resolve piri node configuration and generate compose + keys.
-	resolvedNodes := cfg.resolveNodes()
-
-	keysDir := filepath.Join(tempDir, "generated", "keys")
-	if err := generate.GenerateKeys(keysDir, resolvedNodes, false); err != nil {
-		return nil, fmt.Errorf("generate keys: %w", err)
+	// If the caller picked an embedded snapshot, materialize it on disk
+	// so the rest of the flow can treat it like any path-based snapshot.
+	// Prefer this path over WithSnapshot for external consumers — they
+	// don't have smelt's snapshots/ dir in their checkout, but the
+	// embedded FS travels with the Go import.
+	if cfg.embeddedSnapshotName != "" {
+		if cfg.snapshotPath != "" {
+			return nil, fmt.Errorf("WithEmbeddedSnapshot and WithSnapshot are mutually exclusive")
+		}
+		extracted, err := extractEmbeddedSnapshot(cfg.embeddedSnapshotName, tempDir)
+		if err != nil {
+			return nil, err
+		}
+		cfg.snapshotPath = extracted
 	}
 
-	// Generate piri compose YAML.
-	piriYAML, err := generate.GeneratePiriCompose(resolvedNodes)
-	if err != nil {
-		return nil, fmt.Errorf("generate piri compose: %w", err)
-	}
+	// 2. Determine topology and stage filesystem state (keys/proofs/chain)
+	//    either from a snapshot or by generating fresh.
+	var resolvedNodes []manifest.ResolvedPiriNode
+	var snapDesc *snapshot.Descriptor
+	var snapDir string
 	composeDir := filepath.Join(tempDir, "generated", "compose")
 	if err := os.MkdirAll(composeDir, 0755); err != nil {
 		return nil, fmt.Errorf("create compose dir: %w", err)
 	}
-	if err := os.WriteFile(filepath.Join(composeDir, "piri.yml"), piriYAML, 0644); err != nil {
-		return nil, fmt.Errorf("write piri compose: %w", err)
+
+	if cfg.snapshotPath != "" {
+		if err := validateSnapshotOptions(cfg); err != nil {
+			return nil, err
+		}
+		snapDir, err = resolveSnapshotDir(cfg.snapshotPath)
+		if err != nil {
+			return nil, err
+		}
+		resolvedNodes, err = loadSnapshotTopology(snapDir)
+		if err != nil {
+			return nil, err
+		}
+		snapDesc, err = snapshot.LoadFiles(ctx, snapDir, snapshot.LoadFilesPaths{
+			KeysDir:    filepath.Join(tempDir, "generated", "keys"),
+			ProofsDir:  filepath.Join(tempDir, "generated", "proofs"),
+			ScratchDir: filepath.Join(tempDir, "generated", "snapshot-scratch"),
+		})
+		if err != nil {
+			return nil, fmt.Errorf("load snapshot files: %w", err)
+		}
+		t.Logf("smeltery: booting from snapshot %s (%d piri node(s), %d volume(s))",
+			snapDir, len(resolvedNodes), len(snapDesc.Volumes))
+	} else {
+		resolvedNodes = cfg.resolveNodes()
+		keysDir := filepath.Join(tempDir, "generated", "keys")
+		if err := generate.GenerateKeys(keysDir, resolvedNodes, false); err != nil {
+			return nil, fmt.Errorf("generate keys: %w", err)
+		}
+		if err := generateProofs(tempDir, resolvedNodes); err != nil {
+			return nil, fmt.Errorf("generate proofs: %w", err)
+		}
+		// Cold-boot: compose bind-mounts blockchain state from
+		// generated/snapshot-scratch/. Seed scratch from the embedded
+		// post-deploy baseline so the bind-mount source exists as a file
+		// (not an auto-created root-owned dir) before compose.Up.
+		if err := seedBaselineState(tempDir); err != nil {
+			return nil, fmt.Errorf("seed baseline state: %w", err)
+		}
 	}
 
-	// 3. Generate UCAN delegation proofs (per-node piri → upload + static indexer/etracker)
-	if err := generateProofs(tempDir, resolvedNodes); err != nil {
-		return nil, fmt.Errorf("generate proofs: %w", err)
+	// Generate piri compose YAML — driven by whichever topology we resolved
+	// above (from the snapshot's smelt.yml or from WithPiri* options).
+	piriYAML, err := generate.GeneratePiriCompose(resolvedNodes)
+	if err != nil {
+		return nil, fmt.Errorf("generate piri compose: %w", err)
+	}
+	if err := os.WriteFile(filepath.Join(composeDir, "piri.yml"), piriYAML, 0644); err != nil {
+		return nil, fmt.Errorf("write piri compose: %w", err)
 	}
 
 	// 4. Ensure Docker network exists
@@ -108,15 +161,53 @@ func NewStack(ctx context.Context, t *testing.T, opts ...Option) (*Stack, error)
 		t.Logf("smeltery: mounting local piri binary from %s", cfg.piriBinaryPath)
 	}
 
-	// 7. Create compose stack with optional profiles
+	// 7. Create compose stack with optional profiles. The project name is
+	// deterministic per-test so we know volume names in advance — required
+	// for snapshot-based restore to populate volumes BEFORE compose.Up.
+	projectName := "smeltery-" + sanitizeTestName(t.Name())
 	composeOpts := []compose.ComposeStackOption{
-		compose.StackIdentifier("smeltery-" + sanitizeTestName(t.Name())),
+		compose.StackIdentifier(projectName),
 		compose.WithStackFiles(composeFiles...),
 	}
 
 	composeStack, err := compose.NewDockerComposeWith(composeOpts...)
 	if err != nil {
 		return nil, fmt.Errorf("create compose: %w", err)
+	}
+
+	stack := &Stack{
+		t:         t,
+		compose:   composeStack,
+		tempDir:   tempDir,
+		cfg:       cfg,
+		piriNodes: resolvedNodes,
+	}
+
+	// Register cleanup BEFORE compose.Up. If Up fails (e.g., a container
+	// healthcheck times out), the half-started stack still needs tearing
+	// down — otherwise it leaks containers into the developer's Docker.
+	// t.Cleanup runs whether the test passes, fails, or returns early.
+	t.Cleanup(func() {
+		if cfg.keepOnFailure && t.Failed() {
+			t.Logf("smeltery: keeping stack running due to test failure (tempDir: %s)", tempDir)
+			return
+		}
+		closeCtx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		defer cancel()
+		if err := stack.Close(closeCtx); err != nil {
+			t.Logf("smeltery: stack cleanup failed: %v", err)
+		}
+	})
+
+	// 7b. If restoring from snapshot, pre-populate docker volumes so they
+	// exist with the expected labels and content before compose.Up.
+	if snapDesc != nil {
+		volsSrc := filepath.Join(snapDir, "volumes")
+		for _, v := range snapDesc.Volumes {
+			if err := snapshot.RestoreVolume(ctx, projectName, v, volsSrc); err != nil {
+				return nil, fmt.Errorf("restore volume %s: %w", v, err)
+			}
+		}
 	}
 
 	// 8. Start with wait strategies
@@ -142,32 +233,13 @@ func NewStack(ctx context.Context, t *testing.T, opts ...Option) (*Stack, error)
 			wait.ForHTTP("/readyz").WithPort("3000/tcp").WithStartupTimeout(3*time.Minute))
 	}
 
-	err = waitStack.Up(startCtx, compose.Wait(true))
-	if err != nil {
-		// Clean up containers on startup failure
-		_ = composeStack.Down(context.Background(),
-			compose.RemoveOrphans(true),
-			compose.RemoveVolumes(true),
-		)
+	// Up failures propagate up; the t.Cleanup registered above handles
+	// teardown so no matter where Up fails (container healthcheck, wait
+	// timeout, docker daemon hiccup), the half-started stack gets cleaned
+	// up at test end.
+	if err := waitStack.Up(startCtx, compose.Wait(true)); err != nil {
 		return nil, fmt.Errorf("start stack: %w", err)
 	}
-
-	stack := &Stack{
-		t:         t,
-		compose:   composeStack,
-		tempDir:   tempDir,
-		cfg:       cfg,
-		piriNodes: resolvedNodes,
-	}
-
-	// 9. Register cleanup
-	t.Cleanup(func() {
-		if cfg.keepOnFailure && t.Failed() {
-			t.Logf("smeltery: keeping stack running due to test failure (tempDir: %s)", tempDir)
-			return
-		}
-		stack.Close(context.Background())
-	})
 
 	return stack, nil
 }
@@ -242,13 +314,39 @@ func (s *Stack) Exec(ctx context.Context, service string, args ...string) (stdou
 // Close shuts down the stack and cleans up resources.
 // This is called automatically via t.Cleanup(), but can be called manually.
 func (s *Stack) Close(ctx context.Context) error {
-	if s.compose != nil {
-		return s.compose.Down(ctx,
-			compose.RemoveOrphans(true),
-			compose.RemoveVolumes(true),
-		)
+	if s.compose == nil {
+		return nil
 	}
-	return nil
+	err := s.compose.Down(ctx,
+		compose.RemoveOrphans(true),
+		compose.RemoveVolumes(true),
+	)
+	// Blockchain's SIGTERM trap writes the /output scratch files as root.
+	// Without this chown, t.TempDir cleanup hits unlinkat EPERM and leaks
+	// the tempDir on disk. Best-effort — a cleanup failure here isn't
+	// worth failing the test over.
+	s.chownScratchToHostUser(ctx)
+	return err
+}
+
+// chownScratchToHostUser runs a busybox container as root to chown the
+// scratch dir contents back to the host user, so `t.TempDir()`'s
+// post-test cleanup can unlink them. Docker bind mounts preserve host
+// UID/GID, so chown inside the container changes the host file's owner.
+func (s *Stack) chownScratchToHostUser(ctx context.Context) {
+	scratchDir := filepath.Join(s.tempDir, "generated", "snapshot-scratch")
+	if _, err := os.Stat(scratchDir); err != nil {
+		return
+	}
+	u, err := user.Current()
+	if err != nil {
+		return
+	}
+	cmd := osexec.CommandContext(ctx, "docker", "run", "--rm", "-u", "0:0",
+		"-v", fmt.Sprintf("%s:/s", scratchDir),
+		"busybox", "chown", "-R", u.Uid+":"+u.Gid, "/s",
+	)
+	_ = cmd.Run()
 }
 
 // PiriEndpointN returns the HTTP endpoint for the Nth piri node.

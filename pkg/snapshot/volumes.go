@@ -98,12 +98,17 @@ func archiveVolume(ctx context.Context, projectName, volName, outputDir string) 
 	return nil
 }
 
-// restoreVolume overwrites the contents of the named volume from a tar
-// produced by archiveVolume. Always rm-then-create the volume so it carries
-// the compose labels — otherwise `make up` warns "already exists but was not
-// created by Docker Compose" on every restore. Docker doesn't let us add
-// labels to an existing volume; only set them at create.
-func restoreVolume(ctx context.Context, projectName, volName, inputDir string) error {
+// RestoreVolume overwrites the contents of a docker-named volume
+// (`<projectName>_<volName>`) from a tar produced by archiveVolume.
+// Always rm-then-create the volume so it carries the compose labels —
+// otherwise `make up` warns "already exists but was not created by
+// Docker Compose" on every restore. Docker doesn't let us add labels to
+// an existing volume; only set them at create.
+//
+// Exported for use by pkg/stack, which pre-populates per-test volumes
+// before the testcontainers-go compose.Up(). The compose layer's Load
+// also uses it for the make-up path.
+func RestoreVolume(ctx context.Context, projectName, volName, inputDir string) error {
 	fullVol := fmt.Sprintf("%s_%s", projectName, volName)
 
 	inputDirAbs, err := filepath.Abs(inputDir)

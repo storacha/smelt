@@ -155,6 +155,125 @@ Ending a session:
 
 After either, the next `make up` reads the project's `smelt.yml`.
 
+## Go SDK (pkg/stack)
+
+Integration tests using the testcontainers-go stack (`stack.MustNewStack`)
+can boot from a snapshot in two ways depending on where the test lives.
+
+### For external consumers: `WithEmbeddedSnapshot`
+
+Every snapshot committed to smelt's `snapshots/` directory is bundled
+into the Go module via `//go:embed`, so consumers that import smelt as
+a dependency can reach them without knowing any filesystem paths:
+
+```go
+import "github.com/storacha/smelt/pkg/stack"
+
+func TestFromExternalRepo(t *testing.T) {
+    s := stack.MustNewStack(t,
+        stack.WithEmbeddedSnapshot("3-piri-filesystem-sqlite"),
+    )
+    // Stack up in ~10s from the bundled snapshot.
+}
+```
+
+Discover what's available at runtime:
+
+```go
+names, _ := stack.ListEmbeddedSnapshots()
+// → ["3-piri-filesystem-sqlite", ...]
+```
+
+This is the recommended path for anything outside the smelt repo —
+snapshots travel with the Go import, there's nothing to vendor, and
+bumping the smelt version gives you the latest snapshot fixtures too.
+
+### For smelt-internal tests or custom snapshots: `WithSnapshot`
+
+If you're writing tests inside the smelt repo, or you have a snapshot
+that isn't bundled (e.g., one you saved yourself via `smelt snapshot
+save`), pass a filesystem path:
+
+```go
+s := stack.MustNewStack(t,
+    stack.WithSnapshot("../../snapshots/3-piri-filesystem-sqlite"),
+)
+```
+
+Paths are resolved relative to the test's working directory. Absolute
+paths also work. Under the hood, `WithEmbeddedSnapshot` extracts the
+embedded files to a temp subdir and feeds the resulting path through
+the same code as `WithSnapshot` — they differ only in how the snapshot
+files reach disk.
+
+### Common behavior
+
+Topology always comes from the snapshot's embedded `smelt.yml` —
+pairing either option with `WithPiriCount` or `WithPiriNodes` returns
+an error from `NewStack`, since the snapshot already dictates piri
+count and backend mix.
+
+Each test gets its own compose project (`smeltery-<sanitized-testname>`),
+so parallel tests that load the same snapshot get isolated copies of
+every volume. Teardown (`t.Cleanup` → `composeStack.Down(RemoveVolumes=true)`)
+removes both containers and volumes.
+
+### CI should skip snapshots
+
+CI should exercise the cold-boot path to catch regressions in contract
+deploy or piri registration. Gate either snapshot option on an env var:
+
+```go
+var opts []stack.Option
+if os.Getenv("SMELT_TEST_NO_SNAPSHOT") == "" {
+    opts = append(opts, stack.WithEmbeddedSnapshot("3-piri-filesystem-sqlite"))
+}
+s := stack.MustNewStack(t, opts...)
+```
+
+Then CI sets `SMELT_TEST_NO_SNAPSHOT=1` to force cold-boots.
+
+### Cleaning up leaked containers
+
+The SDK registers `t.Cleanup` **before** calling `compose.Up`, so
+containers are torn down even if the stack fails to start (healthcheck
+timeout, image pull failure, etc). But cleanup can still be skipped
+when a test process is SIGKILLed, panics mid-cleanup, or runs under
+`WithKeepOnFailure` and the developer forgets to tear the stack down
+manually.
+
+Reset a dirty docker state before a suite runs:
+
+```go
+func TestMain(m *testing.M) {
+    ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+    if err := stack.CleanupLeaked(ctx); err != nil {
+        log.Printf("smeltery: sweep warning: %v", err)
+    }
+    cancel()
+    os.Exit(m.Run())
+}
+```
+
+`CleanupLeaked` removes every container and volume whose name starts
+with `smeltery-` (the compose project prefix used by `NewStack`). It
+doesn't touch the shared `storacha-network` or anything outside that
+namespace. Safe to run on a machine where unrelated docker projects
+live; not safe when two pkg/stack-using test suites run concurrently
+(the sweeper from one will nuke the other's live stacks).
+
+### What the Go SDK doesn't do
+
+- **No session manifest**: tests are ephemeral; there's no across-run
+  resume semantics to preserve.
+- **No image-drift warning**: the test author chose the snapshot path
+  deliberately, so is responsible for ensuring images match. If you
+  need the warning, use the compose path or call
+  `snapshot.LoadFiles` / `snapshot.RestoreVolume` directly.
+- **No save from tests**: capturing a snapshot from a running test
+  stack isn't supported. If you need to regenerate snapshots, boot
+  the compose path and run `./smelt snapshot save`.
+
 ## Workflows
 
 ### Preserve a known-good stack

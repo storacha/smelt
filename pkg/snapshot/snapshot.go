@@ -229,6 +229,92 @@ type LoadOpts struct {
 	NameOrPath string
 }
 
+// LoadFilesPaths targets the filesystem-restore portion of a snapshot.
+// Any field left empty is skipped. Used by Load (compose path, fills all
+// four) and pkg/stack (Go test stack, typically omits SessionManifestPath).
+type LoadFilesPaths struct {
+	// KeysDir receives the snapshot's keys/*. Cleared before copy.
+	KeysDir string
+	// ProofsDir receives the snapshot's proofs/*. Cleared before copy.
+	// Tolerated: snapshots without a proofs/ subdir (older format).
+	ProofsDir string
+	// ScratchDir receives the snapshot's blockchain/{anvil-state,
+	// deployed-addresses}.json pair. Compose expects to find them here
+	// via its bind-mount.
+	ScratchDir string
+	// SessionManifestPath receives a copy of the snapshot's smelt.yml.
+	// Set to the session-manifest path for the compose flow; leave empty
+	// for the Go SDK (tests have no session semantics).
+	SessionManifestPath string
+}
+
+// LoadFiles copies the filesystem portion of a snapshot into the given
+// destination paths. Returns the snapshot's descriptor so callers can
+// restore docker volumes separately (via RestoreVolume). Does not touch
+// any docker resources, does not regenerate compose files, does not
+// manage the running stack — those concerns belong to the caller.
+func LoadFiles(ctx context.Context, snapshotDir string, dst LoadFilesPaths) (*Descriptor, error) {
+	desc, err := readDescriptor(snapshotDir)
+	if err != nil {
+		return nil, err
+	}
+
+	if dst.SessionManifestPath != "" {
+		if err := os.MkdirAll(filepath.Dir(dst.SessionManifestPath), 0755); err != nil {
+			return nil, fmt.Errorf("create session manifest dir: %w", err)
+		}
+		if err := copyFile(
+			filepath.Join(snapshotDir, manifestCopy),
+			dst.SessionManifestPath,
+		); err != nil {
+			return nil, fmt.Errorf("install session manifest: %w", err)
+		}
+	}
+
+	if dst.ScratchDir != "" {
+		if err := os.MkdirAll(dst.ScratchDir, 0755); err != nil {
+			return nil, err
+		}
+		for _, f := range []string{"anvil-state.json", "deployed-addresses.json"} {
+			if err := copyFile(
+				filepath.Join(snapshotDir, subdirBlockchain, f),
+				filepath.Join(dst.ScratchDir, f),
+			); err != nil {
+				return nil, fmt.Errorf("restore %s: %w", f, err)
+			}
+		}
+	}
+
+	if dst.KeysDir != "" {
+		if err := os.RemoveAll(dst.KeysDir); err != nil {
+			return nil, fmt.Errorf("clear keys dir: %w", err)
+		}
+		if err := os.MkdirAll(dst.KeysDir, 0755); err != nil {
+			return nil, err
+		}
+		if _, err := copyDir(filepath.Join(snapshotDir, subdirKeys), dst.KeysDir); err != nil {
+			return nil, fmt.Errorf("restore keys: %w", err)
+		}
+	}
+
+	if dst.ProofsDir != "" {
+		if err := os.RemoveAll(dst.ProofsDir); err != nil {
+			return nil, fmt.Errorf("clear proofs dir: %w", err)
+		}
+		if err := os.MkdirAll(dst.ProofsDir, 0755); err != nil {
+			return nil, err
+		}
+		// Older snapshots (pre-proofs) have no proofs subdir; that's fine.
+		if snapProofs := filepath.Join(snapshotDir, subdirProofs); dirExists(snapProofs) {
+			if _, err := copyDir(snapProofs, dst.ProofsDir); err != nil {
+				return nil, fmt.Errorf("restore proofs: %w", err)
+			}
+		}
+	}
+
+	return desc, nil
+}
+
 // Load restores the named snapshot over the current project state. The stack
 // must be fully stopped. Keys and proofs are overwritten (gitignored),
 // the blockchain state file is written to the scratch dir, the snapshot's
@@ -249,38 +335,32 @@ func Load(ctx context.Context, opts LoadOpts) error {
 		return err
 	}
 
-	desc, err := readDescriptor(snapDir)
-	if err != nil {
-		return err
-	}
-
-	// Check for running containers BEFORE touching the manifest — we need
-	// to confirm the stack is down against whatever topology is currently
+	// Check for running containers BEFORE touching anything — we need to
+	// confirm the stack is down against whatever topology is currently
 	// resolved, not the topology we're about to install.
 	fmt.Printf("Checking stack is down...\n")
 	if err := requireStackDown(ctx, projectDir); err != nil {
 		return err
 	}
 
-	// Install the snapshot's smelt.yml as a session manifest in scratch.
-	// The project root smelt.yml is untouched so git stays clean. Subsequent
-	// smelt generate / save calls prefer the session manifest while it exists.
-	fmt.Printf("Installing session manifest...\n")
-	sessionManifest := filepath.Join(projectDir, manifest.SessionManifestPath)
-	if err := os.MkdirAll(filepath.Dir(sessionManifest), 0755); err != nil {
-		return fmt.Errorf("create scratch dir: %w", err)
-	}
-	if err := copyFile(
-		filepath.Join(snapDir, manifestCopy),
-		sessionManifest,
-	); err != nil {
-		return fmt.Errorf("install session manifest: %w", err)
+	// Restore the filesystem portion of the snapshot: session manifest,
+	// blockchain state files, keys, proofs. This matches what the compose
+	// layer expects via its bind-mounts.
+	fmt.Printf("Restoring files (session manifest, blockchain state, keys, proofs)...\n")
+	desc, err := LoadFiles(ctx, snapDir, LoadFilesPaths{
+		KeysDir:             filepath.Join(projectDir, projKeysDir),
+		ProofsDir:           filepath.Join(projectDir, projProofsDir),
+		ScratchDir:          filepath.Join(projectDir, projScratchDir),
+		SessionManifestPath: filepath.Join(projectDir, manifest.SessionManifestPath),
+	})
+	if err != nil {
+		return err
 	}
 
-	// Regenerate compose files so they match the session manifest (which the
-	// resolver now picks up). A fresh `make nuke` removes
-	// generated/compose/piri.yml; without it, `docker compose down` below
-	// fails parsing the compose include.
+	// Regenerate compose files so they match the freshly-installed session
+	// manifest. A fresh `make nuke` removes generated/compose/piri.yml;
+	// without it, `docker compose down` below fails parsing the compose
+	// include.
 	if _, err := generate.Generate(generate.Options{
 		ProjectDir: projectDir,
 	}); err != nil {
@@ -319,59 +399,12 @@ func Load(ctx context.Context, opts LoadOpts) error {
 		}
 	}
 
-	fmt.Printf("Restoring blockchain state...\n")
-	// Writing to scratch (not systems/blockchain/state/) means the tracked
-	// baseline stays clean in git, and the next `make up` reads from scratch
-	// via compose's bind-mount. A later `make down; make up` cycle then
-	// resumes from the current chain, not from the snapshot, because the
-	// SIGTERM dump keeps scratch up to date.
-	bcDst := filepath.Join(projectDir, projScratchDir)
-	if err := os.MkdirAll(bcDst, 0755); err != nil {
-		return err
-	}
-	for _, f := range []string{"anvil-state.json", "deployed-addresses.json"} {
-		if err := copyFile(
-			filepath.Join(snapDir, subdirBlockchain, f),
-			filepath.Join(bcDst, f),
-		); err != nil {
-			return fmt.Errorf("restore %s: %w", f, err)
-		}
-	}
-
-	fmt.Printf("Restoring keys...\n")
-	keysDst := filepath.Join(projectDir, projKeysDir)
-	if err := os.RemoveAll(keysDst); err != nil {
-		return fmt.Errorf("clear keys dir: %w", err)
-	}
-	if err := os.MkdirAll(keysDst, 0755); err != nil {
-		return err
-	}
-	if _, err := copyDir(filepath.Join(snapDir, subdirKeys), keysDst); err != nil {
-		return fmt.Errorf("restore keys: %w", err)
-	}
-
-	fmt.Printf("Restoring proofs...\n")
-	proofsDst := filepath.Join(projectDir, projProofsDir)
-	if err := os.RemoveAll(proofsDst); err != nil {
-		return fmt.Errorf("clear proofs dir: %w", err)
-	}
-	if err := os.MkdirAll(proofsDst, 0755); err != nil {
-		return err
-	}
-	// Older snapshots (pre-proofs) have no proofs subdir; that's fine — the
-	// first `make up` will regenerate them via init.sh.
-	if snapProofs := filepath.Join(snapDir, subdirProofs); dirExists(snapProofs) {
-		if _, err := copyDir(snapProofs, proofsDst); err != nil {
-			return fmt.Errorf("restore proofs: %w", err)
-		}
-	}
-
 	fmt.Printf("Restoring %d volume(s)...\n", len(desc.Volumes))
 	proj := projectName(projectDir)
 	volsSrc := filepath.Join(snapDir, subdirVolumes)
 	for _, v := range desc.Volumes {
 		fmt.Printf("  %s\n", v)
-		if err := restoreVolume(ctx, proj, v, volsSrc); err != nil {
+		if err := RestoreVolume(ctx, proj, v, volsSrc); err != nil {
 			return err
 		}
 	}
