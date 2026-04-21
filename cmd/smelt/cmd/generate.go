@@ -19,7 +19,10 @@ var generateCmd = &cobra.Command{
 
 func init() {
 	rootCmd.AddCommand(generateCmd)
-	generateCmd.Flags().StringP("manifest", "m", "smelt.yml", "path to manifest file")
+	// Default is empty so Generate's session-aware resolver picks the right
+	// manifest: generated/snapshot-scratch/smelt.yml during a snapshot
+	// session, smelt.yml otherwise. Pass an explicit path to force.
+	generateCmd.Flags().StringP("manifest", "m", "", "path to manifest file (default: auto-detect)")
 	generateCmd.Flags().StringP("project-dir", "d", ".", "project root directory")
 	generateCmd.Flags().Bool("force", false, "overwrite existing keys")
 }

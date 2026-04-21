@@ -25,6 +25,11 @@ echo ""
 echo "Step 1: Creating generated/ directory..."
 mkdir -p "$GENERATED_DIR/keys"
 mkdir -p "$GENERATED_DIR/proofs"
+# snapshot-scratch is bind-mounted into the blockchain container as /output;
+# needs to exist before compose up so docker creates a bind, not an anon volume.
+mkdir -p "$GENERATED_DIR/snapshot-scratch"
+# snapshots/ holds named snapshot directories produced by `smelt snapshot save`.
+mkdir -p "$GENERATED_DIR/snapshots"
 
 # Note: Key generation is handled by 'smelt generate' (called via 'make generate').
 # This script handles proof generation and Docker network creation.

@@ -12,14 +12,25 @@
 services:
   dynamodb-local:
     image: amazon/dynamodb-local:latest
+    # Root so docker's auto-created volume dir (root-owned) is writable. The
+    # upstream image's dynamodblocal uid 1000 can't write into a fresh named
+    # volume without a chown sidecar.
+    user: "0:0"
     ports:
       - "8000:8000"
-    command: ["-jar", "DynamoDBLocal.jar", "-sharedDb"]
+    # -dbPath persists tables to disk (default is in-memory). Required so
+    # delegator's allow list and upload's provider registry survive restarts
+    # and are captured by `smelt snapshot save`.
+    command: ["-jar", "DynamoDBLocal.jar", "-sharedDb", "-dbPath", "/data"]
+    volumes:
+      - dynamodb-data:/data
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:8000/shell/ || exit 0"]
+      start_interval: 1s
       interval: 5s
       timeout: 3s
       retries: 5
+      start_period: 10s
     restart: unless-stopped
     networks:
       - storacha-network
@@ -37,9 +48,11 @@ services:
       - minio-data:/data
     healthcheck:
       test: ["CMD", "mc", "ready", "local"]
+      start_interval: 1s
       interval: 5s
       timeout: 3s
       retries: 5
+      start_period: 10s
     restart: unless-stopped
     networks:
       - storacha-network
@@ -53,3 +66,4 @@ services:
 
 volumes:
   minio-data:
+  dynamodb-data:

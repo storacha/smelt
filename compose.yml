@@ -9,6 +9,12 @@
 # Note: The storacha-network must be created before starting.
 # Run `make init` or `./scripts/init.sh` first.
 
+# Pin project name so docker volume names (e.g. `smelt_piri-0-data`) are
+# stable across checkouts. Without this, compose derives the project name
+# from the current directory's basename — which breaks snapshot portability
+# for teammates who clone into differently-named dirs.
+name: smelt
+
 include:
   - path: systems/blockchain/compose.yml
   - path: systems/common/compose.yml

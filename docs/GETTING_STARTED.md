@@ -24,17 +24,26 @@ This guide walks you through setting up Smelt—a complete Storacha network runn
 
 Before you begin, ensure your system has the following:
 
-### Docker and Docker Compose
+### Docker Engine 25+ and Docker Compose
 
-Docker Compose V2 is required (the `docker compose` subcommand, not the legacy `docker-compose` binary). Most Docker Desktop installations from 2022 onward include this by default.
+Smelt requires docker engine 25.0 or newer. Older engines silently ignore
+`healthcheck.start_interval` (resulting in slower boots) and don't support
+the compose top-level `name:` key (breaking snapshot portability across
+checkouts). The Makefile's `check-docker` target fails early with an upgrade
+pointer on older engines.
+
+Docker Compose V2 is required (the `docker compose` subcommand, not the
+legacy `docker-compose` binary). Most Docker installations from 2024 onward
+include both.
 
 ```bash
 # Verify your installation
-docker --version          # Any recent version works
-docker compose version    # Should show "Docker Compose version v2.x.x"
+docker version --format '{{.Server.Version}}'    # Should be 25.0 or higher
+docker compose version                            # Should show "Docker Compose version v2.x.x"
 ```
 
-If `docker compose` fails but `docker-compose` works, you have the legacy version. Upgrade Docker Desktop or install the compose plugin separately.
+If `docker compose` fails but `docker-compose` works, you have the legacy
+version. Upgrade Docker Desktop or install the compose plugin separately.
 
 ### Go 1.22+
 
@@ -74,7 +83,8 @@ Smelt runs on:
 
 - **macOS**: Intel or Apple Silicon
 - **Linux**: Any distribution with Docker support
-- **Windows**: WSL2 only (native Windows Docker has networking issues with this configuration)
+
+Windows (including WSL2) is not a supported development host.
 
 ---
 
@@ -124,11 +134,16 @@ The initialization script (`scripts/init.sh`) performs five steps:
 
 ```
 generated/
-  keys/       # Cryptographic keys for service identities
-  proofs/     # UCAN delegation proofs for service authorization
+  keys/               # Cryptographic keys for service identities
+  proofs/             # UCAN delegation proofs for service authorization
+  compose/            # Generated Docker Compose files (piri.yml from smelt.yml)
+  snapshot-scratch/   # Working chain state + session manifest when a snapshot is loaded
+  snapshots/          # Personal snapshots saved via `smelt snapshot save`
 ```
 
-These directories are gitignored. Your keys are local to your machine.
+The `generated/` directory is gitignored in full. Shared/team snapshots
+live under `snapshots/` at the project root instead — see
+[SNAPSHOTS.md](SNAPSHOTS.md). Your keys are local to your machine.
 
 #### Step 2: Generate Ed25519 Keypairs
 
@@ -249,10 +264,14 @@ The entrypoint script (`systems/piri/entrypoint.sh`) is shared by every piri con
 |-------|----------|
 | Image pull (first time) | 2-5 minutes |
 | Key generation | 5-10 seconds |
-| Service startup | 30-60 seconds |
-| Piri initialization | 1-3 minutes |
+| Service startup | 5-15 seconds |
+| Piri registration (per node) | 20-40 seconds |
 | **Total (first run)** | **3-8 minutes** |
-| **Total (subsequent)** | **1-3 minutes** |
+| **Total (subsequent cold boot)** | **30-60 seconds** |
+| **Total (snapshot-restored)** | **~10 seconds** |
+
+See [SNAPSHOTS.md](SNAPSHOTS.md) for how to skip the registration cost
+on subsequent boots.
 
 ---
 
@@ -267,18 +286,24 @@ make status
 This runs `docker compose ps` and highlights health states. A healthy network looks like:
 
 ```
-NAME                    STATUS                   PORTS
-blockchain              Up 2 minutes (healthy)   0.0.0.0:8545->8545/tcp
-delegator               Up 2 minutes (healthy)   0.0.0.0:8081->80/tcp
-dynamodb-local          Up 2 minutes (healthy)   0.0.0.0:8000->8000/tcp
-guppy                   Up About a minute
-indexer                 Up 2 minutes (healthy)   0.0.0.0:9000->80/tcp
-ipni                    Up 2 minutes (healthy)   0.0.0.0:3000-3003->3000-3003/tcp
-piri                    Up 2 minutes (healthy)   0.0.0.0:4000->3000/tcp
-redis                   Up 2 minutes (healthy)   0.0.0.0:6379->6379/tcp
-signing-service         Up 2 minutes (healthy)   0.0.0.0:7446->7446/tcp
-upload                  Up About a minute (healthy)   0.0.0.0:8080->80/tcp
+NAME                     STATUS                        PORTS
+smelt-blockchain-1       Up 1 minute (healthy)         0.0.0.0:8545->8545/tcp
+smelt-delegator-1        Up 1 minute (healthy)         0.0.0.0:8081->80/tcp
+smelt-dynamodb-local-1   Up 1 minute (healthy)         0.0.0.0:8000->8000/tcp
+smelt-email-1            Up 1 minute
+smelt-guppy-1            Up 1 minute
+smelt-indexer-1          Up 1 minute (healthy)         0.0.0.0:9000->80/tcp
+smelt-ipni-1             Up 1 minute (healthy)         0.0.0.0:3000-3003->3000-3003/tcp
+smelt-ipni-init-1        Exited (0)
+smelt-minio-1            Up 1 minute (healthy)         0.0.0.0:9010-9011->9000-9001/tcp
+smelt-piri-0-1           Up 1 minute (healthy)         0.0.0.0:4000->3000/tcp
+smelt-redis-1            Up 1 minute (healthy)         0.0.0.0:6379->6379/tcp
+smelt-signing-service-1  Up 1 minute (healthy)         0.0.0.0:7446->7446/tcp
+smelt-upload-1           Up 1 minute (healthy)         0.0.0.0:8080->80/tcp
 ```
+
+`ipni-init` is a one-shot initializer that exits with code 0 after
+setting up IPNI's data directory. Exited (0) is the correct final state.
 
 ### Understanding Health States
 
@@ -324,56 +349,72 @@ guppy login your@email.com
 ### Create a Space
 
 ```bash
-guppy space create my-space
+# Returns the space's did:key on stdout.
+SPACE=$(guppy space generate)
+echo "$SPACE"
 ```
 
-**What's happening**: Guppy generates another Ed25519 keypair specifically for this space. A space is a logical container for content—think of it as a namespace with its own access controls. The space gets a `did:key` identifier like `did:key:z6MkrZ...`.
+**What's happening**: Guppy generates another Ed25519 keypair specifically
+for this space. A space is a logical container for content — think of it
+as a namespace with its own access controls. The DID looks like
+`did:key:z6MkrZ...`.
 
-Guppy automatically selects the newly created space as the current space.
+### Add a Source and Upload
 
-### Upload a File
+Guppy uploads are space-scoped and source-based: you first register one or
+more files or directories as *sources* of a space, then `guppy upload
+<SPACE>` ships every source's content.
 
 ```bash
+# Create some test data (min 1 KiB; use randdir for something realistic)
 echo "Hello Storacha" > /tmp/hello.txt
-guppy upload --replicas=1 /tmp/hello.txt
+
+# Register the file as a source of the space
+guppy upload source add "$SPACE" /tmp/hello.txt
+
+# Upload every source in the space
+guppy upload "$SPACE"
 ```
 
-Guppy's default replication factor is 3, but Smelt ships with a single piri node, so pass `--replicas=1`. To run without the flag, add more piri nodes in `smelt.yml` (see [Configuring Piri Nodes](#configuring-piri-nodes-optional) above).
+Output shows a content CID per source — save the CIDs for retrieval:
+
+```
+Upload completed successfully: bafybei...
+```
 
 **What's happening** (this is the interesting part):
 
-1. **Sharding**: Guppy reads the file and creates content-addressed blocks. Small files become a single block; large files are split into multiple shards.
+1. **Sharding**: Guppy reads each source and creates content-addressed
+   blocks. Small files become a single block; large files are split
+   into multiple shards.
+2. **UCAN invocations**: For each shard, guppy sends a `space/blob/add`
+   invocation to the upload service.
+3. **Blob allocation**: The upload service forwards a `blob/allocate`
+   request to piri, which reserves space and returns a presigned
+   upload URL.
+4. **HTTP PUT**: Guppy uploads the bytes to piri.
+5. **Blob acceptance**: Guppy signals completion via `ucan/conclude`;
+   the upload service calls `blob/accept` on piri, which verifies the
+   upload and emits a location claim.
+6. **Claim caching**: The upload service pushes the location claim to
+   the indexer via `claim/cache`, making content discoverable.
+7. **Indexing**: Guppy sends `space/index/add` to register the content
+   index, and `upload/add` to record the upload.
 
-2. **UCAN invocations**: For each shard, guppy sends a `space/blob/add` invocation to the upload service, requesting storage allocation.
-
-3. **Blob allocation**: The upload service forwards a `blob/allocate` request to piri, which reserves space and returns a presigned upload URL.
-
-4. **HTTP PUT**: Guppy uploads the actual bytes to piri via HTTP PUT to the presigned URL.
-
-5. **Blob acceptance**: Guppy signals completion via `ucan/conclude`. The upload service calls `blob/accept` on piri, which verifies the upload and generates a location claim.
-
-6. **Claim caching**: The upload service sends the location claim to the indexer via `claim/cache`, making the content discoverable.
-
-7. **Indexing**: Guppy sends `space/index/add` to register the content index, and `upload/add` to record the upload.
-
-The output shows a content CID—the content-addressed identifier for your uploaded file. Save this for retrieval.
-
-```
-Uploaded: /tmp/hello.txt
-Root CID: bafybei...
-```
+Subsequent `guppy upload "$SPACE"` runs behave like rsync — only changed
+content is re-uploaded.
 
 ---
 
 ## Your First Retrieval
 
-With content uploaded, you can retrieve it using the CID from the upload output.
+With content uploaded, retrieve it by CID via the space that owns it.
 
 ### Download the Content
 
 ```bash
 # Still inside the guppy shell
-guppy download bafybei... /tmp/retrieved.txt
+guppy retrieve "$SPACE" bafybei... /tmp/retrieved.txt
 ```
 
 Replace `bafybei...` with the actual CID from your upload.
@@ -409,17 +450,18 @@ Now that you've completed an upload/retrieval cycle, here's how to inspect and d
 # All services (noisy but comprehensive)
 make logs
 
-# Specific service
-docker compose logs -f piri
+# Specific service — use piri-0 (or piri-N) for piri services
+docker compose logs -f piri-0
 
 # Multiple services
 docker compose logs -f upload indexer
 
 # Last 100 lines only
-docker compose logs --tail=100 piri
+docker compose logs --tail=100 piri-0
 ```
 
-Log output varies by service. Piri and the indexer tend to be verbose; the blockchain is quieter unless transactions are occurring.
+Log output varies by service. Piri and the indexer tend to be verbose;
+the blockchain is quieter unless transactions are occurring.
 
 ### Shelling into Containers
 
@@ -427,13 +469,16 @@ Log output varies by service. Piri and the indexer tend to be verbose; the block
 # Guppy CLI
 make shell-guppy
 
-# Piri storage node
+# Piri storage node (shells into piri-0 by default)
 make shell-piri
 
 # Any service (using docker compose directly)
 docker compose exec indexer sh
 docker compose exec delegator sh
 docker compose exec blockchain sh
+
+# Additional piri nodes: use the piri-N name
+docker compose exec piri-1 sh
 ```
 
 Most containers use Alpine Linux, so `sh` is available but `bash` may not be.
@@ -458,8 +503,9 @@ curl http://localhost:9000/
 
 **Piri (health check)**
 ```bash
-curl http://localhost:4000/
-# Returns empty response with 200 OK if healthy
+curl http://localhost:4000/readyz
+# Returns {"status":"ok"} if healthy. For additional nodes:
+# curl http://localhost:4001/readyz, :4002/readyz, etc.
 ```
 
 **Delegator (health check)**
@@ -632,7 +678,11 @@ Smelt provides several levels of cleanup, from gentle to nuclear.
 make down
 ```
 
-Stops all containers but preserves Docker volumes. Your uploaded content, blockchain state, and configuration remain intact. Next `make up` restarts quickly with existing data.
+Stops all containers but preserves Docker volumes. On graceful shutdown
+the blockchain container dumps the current anvil state to
+`generated/snapshot-scratch/`, so your uploaded content, contract state,
+and service state all persist. Next `make up` resumes from exactly where
+you left off.
 
 ### Stop Services, Delete Volumes
 
@@ -640,13 +690,10 @@ Stops all containers but preserves Docker volumes. Your uploaded content, blockc
 make clean
 ```
 
-Stops containers and deletes Docker volumes. This removes:
-- Uploaded content in piri
-- IPNI index data
-- Redis cache
-- DynamoDB tables
-
-Keys and proofs in `generated/` are preserved. The network will reinitialize on next start, but with the same identities.
+Stops containers, deletes Docker volumes, and resets the scratch chain
+state plus any active snapshot session. Keys and proofs in `generated/`
+are preserved. The next `make up` cold-boots from the committed baseline
+with the same service identities.
 
 ### Delete Everything
 
@@ -654,10 +701,9 @@ Keys and proofs in `generated/` are preserved. The network will reinitialize on 
 make nuke
 ```
 
-Removes containers, volumes, keys, proofs, and locally-built Docker images. Complete reset. The next `make up` will:
-- Generate new keys (new DIDs for all services)
-- Pull images fresh
-- Initialize from scratch
+Removes containers, volumes, keys, proofs, locally-built Docker images,
+and scratch state. Complete reset. The next `make up` regenerates keys
+(new DIDs), pulls images, and initializes from scratch.
 
 ### Fresh Start
 
@@ -665,13 +711,22 @@ Removes containers, volumes, keys, proofs, and locally-built Docker images. Comp
 make fresh
 ```
 
-Equivalent to `make nuke` followed by `make init`, `docker compose build`, and `make up`. One command to destroy everything and rebuild.
+Equivalent to `make nuke` followed by `make init`, `docker compose build`,
+and `make up`. One command to destroy everything and rebuild.
 
-Both `make clean` and `make nuke` prompt for confirmation. Skip the prompt with:
+Both `make clean` and `make nuke` prompt for confirmation. Skip the
+prompt with:
 
 ```bash
 make nuke YES=1
 ```
+
+### Skip the cold boot next time
+
+Once a stack is healthy, `./smelt snapshot save baseline` captures it.
+Later boots via `make up SNAPSHOT=baseline` reach the same state in
+~10s instead of ~45s by skipping contract deploy and piri registration.
+See [SNAPSHOTS.md](SNAPSHOTS.md) for the full story.
 
 ---
 
@@ -744,5 +799,6 @@ For deep protocol understanding:
 | Delegator | 8081 | `curl localhost:8081/healthcheck` |
 | IPNI | 3000 | `curl localhost:3000/health` |
 | Indexer | 9000 | `curl localhost:9000/` |
-| Piri | 4000+N | `curl localhost:4000/` (piri-0; each additional node in `smelt.yml` adds 1) |
+| Piri-0 | 4000 | `curl localhost:4000/readyz` |
+| Piri-N | 4000+N | `curl localhost:$((4000+N))/readyz` |
 | Upload | 8080 | `curl localhost:8080/health` |

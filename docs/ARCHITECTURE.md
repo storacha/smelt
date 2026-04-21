@@ -87,12 +87,29 @@ When any piri node declares `db: postgres` or `blob: s3` in `smelt.yml`, the gen
 
 **Role**: Local Filecoin-compatible EVM blockchain for PDP (Provable Data Possession) contracts.
 
-**Image**: `ghcr.io/storacha/filecoin-localdev:b66c8bd`
+**Image**: `ghcr.io/storacha/filecoin-localdev:<tag>` (default pinned in `.env`).
 
 **What it does**:
 - Runs Anvil (Foundry's local Ethereum node) with 3-second block times
 - Hosts PDP smart contracts that storage providers interact with
 - Provides the foundation for proof-of-storage verification
+
+**Startup modes** (via `MODE` env var, auto-detected if unset):
+- `MODE=init` — deploys contracts fresh at boot, then stays alive. On
+  graceful shutdown (SIGTERM) it dumps the full anvil state and
+  deployed-addresses to `/output`. Used once per contract release to
+  build the committed baseline at `systems/blockchain/state/`.
+- `MODE=load` — loads state from `/app/anvil-state.json` (the committed
+  baseline or a snapshot-restored state file) instead of deploying.
+  On graceful shutdown also dumps to `/output` if the scratch dir is
+  mounted, so `make down` preserves current chain state for the next
+  `make up` — or for `smelt snapshot save`.
+
+Smelt wires the second mode: `systems/blockchain/compose.yml` mounts
+`generated/snapshot-scratch/anvil-state.json` as `/app/anvil-state.json`
+and the scratch dir as `/output`. The SIGTERM dump closes the resume
+loop, so `make down; make up` returns you to the exact chain state you
+were working with.
 
 **Interactions**:
 - **signing-service** → blockchain: Signs PDP operations (createProofSet, addRoots, etc.)

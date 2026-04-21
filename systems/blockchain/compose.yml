@@ -9,17 +9,29 @@ services:
     ports:
       - "8545:8545"
     volumes:
-      # Pre-dumped state files for fast startup (~3s instead of ~30s)
-      - ./state/anvil-state.json:/app/anvil-state.json:ro
-      - ./state/deployed-addresses.json:/deployed-addresses.json:ro
+      # Chain state lives in generated/snapshot-scratch/. The `/output` dir
+      # mount receives the SIGTERM dump from the entrypoint on every stop,
+      # and the per-file input mounts pick that same dump up on the next
+      # boot — so `make down; make up` resumes from where work left off
+      # rather than from the baseline. systems/blockchain/state/*.json is
+      # the committed post-deploy baseline; Makefile's ensure-state target
+      # seeds scratch from it on first run and `make clean` / `make nuke`
+      # clears scratch to force a true cold boot.
+      - ../../generated/snapshot-scratch/anvil-state.json:/app/anvil-state.json:ro
+      - ../../generated/snapshot-scratch/deployed-addresses.json:/deployed-addresses.json:ro
+      - ../../generated/snapshot-scratch:/output
     environment:
       - ANVIL_BLOCK_TIME=3
     healthcheck:
-      test: ["CMD", "curl", "-sf", "http://localhost:8545", "-X", "POST", "-H", "Content-Type: application/json", "-d", '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}']
+      # Container touches /tmp/ready after contracts are deployed/loaded AND
+      # mockrpc is accepting requests. Sentinel is strictly more accurate than
+      # an eth_blockNumber probe, which succeeds before the mock RPC layer is up.
+      test: ["CMD", "test", "-f", "/tmp/ready"]
+      start_interval: 1s
       interval: 5s
       timeout: 5s
       retries: 10
-      start_period: 10s
+      start_period: 30s
     restart: unless-stopped
     networks:
       - storacha-network

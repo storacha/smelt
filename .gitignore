@@ -1,2 +1,4 @@
 .idea/
-generated/compose/
+generated/
+# Built smelt CLI binary
+/smelt

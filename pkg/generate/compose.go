@@ -121,11 +121,12 @@ func buildPiriService(node manifest.ResolvedPiriNode) ComposeService {
 			"upload":          {Condition: "service_healthy"},
 		},
 		Healthcheck: &Healthcheck{
-			Test:        []string{"CMD-SHELL", `wget -q -O - http://localhost:3000/readyz | grep -q '"status":\s*"ok"'`},
-			Interval:    "10s",
-			Timeout:     "5s",
-			Retries:     30,
-			StartPeriod: "180s",
+			Test:          []string{"CMD-SHELL", `wget -q -O - http://localhost:3000/readyz | grep -q '"status":\s*"ok"'`},
+			StartInterval: "1s",
+			Interval:      "10s",
+			Timeout:       "5s",
+			Retries:       30,
+			StartPeriod:   "180s",
 		},
 		Restart:  "unless-stopped",
 		Networks: []string{"storacha-network"},
@@ -145,10 +146,12 @@ func buildPostgresService() ComposeService {
 			"piri-postgres-data:/var/lib/postgresql/data",
 		},
 		Healthcheck: &Healthcheck{
-			Test:     []string{"CMD-SHELL", "pg_isready -U piri -d postgres"},
-			Interval: "5s",
-			Timeout:  "3s",
-			Retries:  10,
+			Test:          []string{"CMD-SHELL", "pg_isready -U piri -d postgres"},
+			StartInterval: "1s",
+			Interval:      "5s",
+			Timeout:       "3s",
+			Retries:       10,
+			StartPeriod:   "10s",
 		},
 		Restart:  "unless-stopped",
 		Networks: []string{"piri-storage-net"},
@@ -193,10 +196,12 @@ func buildMinioService() ComposeService {
 			"piri-minio-data:/data",
 		},
 		Healthcheck: &Healthcheck{
-			Test:     []string{"CMD", "mc", "ready", "local"},
-			Interval: "5s",
-			Timeout:  "3s",
-			Retries:  10,
+			Test:          []string{"CMD", "mc", "ready", "local"},
+			StartInterval: "1s",
+			Interval:      "5s",
+			Timeout:       "3s",
+			Retries:       10,
+			StartPeriod:   "10s",
 		},
 		Restart:  "unless-stopped",
 		Networks: []string{"piri-storage-net"},
@@ -232,11 +237,17 @@ type DependsOnCondition struct {
 
 // Healthcheck represents a Docker Compose healthcheck.
 type Healthcheck struct {
-	Test        []string `yaml:"test"`
-	Interval    string   `yaml:"interval,omitempty"`
-	Timeout     string   `yaml:"timeout,omitempty"`
-	Retries     int      `yaml:"retries,omitempty"`
-	StartPeriod string   `yaml:"start_period,omitempty"`
+	Test []string `yaml:"test"`
+	// StartInterval is the poll rate during start_period. Docker engine 25+
+	// and compose 2.23+ support this; older versions warn and ignore. Setting
+	// a short value (1s) means services are detected healthy quickly after
+	// they actually become ready, which matters for snapshot-loaded boots
+	// where services are ready almost immediately.
+	StartInterval string `yaml:"start_interval,omitempty"`
+	Interval      string `yaml:"interval,omitempty"`
+	Timeout       string `yaml:"timeout,omitempty"`
+	Retries       int    `yaml:"retries,omitempty"`
+	StartPeriod   string `yaml:"start_period,omitempty"`
 }
 
 func newComposeFile() *ComposeFile {
