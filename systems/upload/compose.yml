@@ -17,7 +17,7 @@ services:
       - ./post_start.sh:/post_start.sh:ro
       - ./config:/etc/sprue:ro
     post_start:
-      - command: sh ./post_start.sh
+      - command: bash ./post_start.sh
     depends_on:
       indexer:
         condition: service_healthy
