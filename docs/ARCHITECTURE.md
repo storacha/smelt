@@ -58,20 +58,20 @@ Storacha is a decentralized storage network where data is stored across multiple
 
 ```mermaid
 flowchart TB
-    blockchain["blockchain (Anvil)<br/>:8545"]
+    blockchain["blockchain (Anvil)<br/>:15000→:8545"]
 
-    blockchain --> signing["signing-service<br/>:7446"]
-    blockchain --> delegator["delegator<br/>:8080"]
-    blockchain --> redis["redis<br/>:6379"]
+    blockchain --> signing["signing-service<br/>:15030→:7446"]
+    blockchain --> delegator["delegator<br/>:15040→:80"]
+    blockchain --> redis["redis<br/>:15020→:6379"]
 
-    delegator --> dynamodb["dynamodb-local<br/>:8000"]
-    redis --> ipni["ipni<br/>:3000/:3003"]
+    delegator --> dynamodb["dynamodb-local<br/>:15010→:8000"]
+    redis --> ipni["ipni<br/>:15090/:15092"]
 
-    signing --> piri["piri-0 .. piri-N<br/>:3000→:4000+N<br/>(N declared in smelt.yml)"]
+    signing --> piri["piri-0 .. piri-N<br/>:15100+N→:3000<br/>(N declared in smelt.yml)"]
     dynamodb --> piri
-    ipni --> indexer["indexer<br/>:80→:9000"]
+    ipni --> indexer["indexer<br/>:15050→:80"]
 
-    piri --> upload["upload (mock svc)<br/>:8080"]
+    piri --> upload["upload (mock svc)<br/>:15060→:80"]
     indexer --> upload
 
     upload --> guppy["guppy (CLI)"]
@@ -83,7 +83,7 @@ When any piri node declares `db: postgres` or `blob: s3` in `smelt.yml`, the gen
 
 ## Services Overview
 
-### 1. Blockchain (Anvil) - Port 8545
+### 1. Blockchain (Anvil) - Host port 15000 → container 8545
 
 **Role**: Local Filecoin-compatible EVM blockchain for PDP (Provable Data Possession) contracts.
 
@@ -118,7 +118,7 @@ were working with.
 
 ---
 
-### 2. Redis - Port 6379
+### 2. Redis - Host port 15020 → container 6379
 
 **Role**: Cache backend for the indexing service.
 
@@ -134,20 +134,20 @@ were working with.
 
 ---
 
-### 3. IPNI (storetheindex) - Ports 3000, 3002, 3003
+### 3. IPNI (storetheindex) - Host ports 15090, 15091, 15092 → container 3000, 3002, 3003
 
 **Role**: InterPlanetary Network Indexer - the canonical content discovery layer.
 
 **Build context**: `../storetheindex`
 
 **What it does**:
-- **Port 3000 (Finder)**: Handles content queries - "Where can I find CID X?"
-- **Port 3002 (Admin)**: Administrative operations
-- **Port 3003 (Ingest)**: Receives advertisement chains from storage providers
+- **Container port 3000 / host 15090 (Finder)**: Handles content queries - "Where can I find CID X?"
+- **Container port 3002 / host 15091 (Admin)**: Administrative operations
+- **Container port 3003 / host 15092 (P2P / Ingest)**: Receives advertisement chains from storage providers
 
 **Interactions**:
-- **indexer** → ipni:3000: Queries for content locations
-- **piri** → ipni:3003 (indirect): Publishes advertisement chains announcing stored content
+- **indexer** → `ipni:3000`: Queries for content locations (in-network)
+- **piri** → `ipni:3003` (indirect): Publishes advertisement chains announcing stored content (in-network)
 
 **How IPNI indexing works**:
 1. Storage providers (like Piri) create "advertisement chains" - signed announcements of content they store
@@ -156,7 +156,7 @@ were working with.
 
 ---
 
-### 4. Indexer Service - Port 80 (exposed as 9000)
+### 4. Indexer Service - Container port 80 (host 15050)
 
 **Role**: Storacha's caching layer for content claims - sits between clients and IPNI.
 
@@ -198,7 +198,7 @@ were working with.
 
 ---
 
-### 5. Upload Service (Sprue) - Port 8080
+### 5. Upload Service (Sprue) - Container port 80 (host 15060)
 
 **Role**: Simplified replacement for w3infra's upload-api. Orchestrates the upload workflow.
 
@@ -243,9 +243,9 @@ pkg/indexerclient/client.go → UCAN client for Indexer communication (assert/in
 
 ---
 
-### 6. Piri - Port 3000 internal, 4000+N external
+### 6. Piri - Container port 3000, host 15100+N
 
-**Role**: Storage node(s) implementing the Storacha storage protocol with PDP proofs. Smelt runs one or more piri nodes based on `smelt.yml`; each is a separate service (`piri-0`, `piri-1`, ..., up to `piri-8`) with its own key, wallet, data volume, and on-chain provider registration. Host port is `4000 + N` where N is the node index.
+**Role**: Storage node(s) implementing the Storacha storage protocol with PDP proofs. Smelt runs one or more piri nodes based on `smelt.yml`; each is a separate service (`piri-0`, `piri-1`, ..., up to `piri-8`) with its own key, wallet, data volume, and on-chain provider registration. Host port is `15100 + N` where N is the node index.
 
 **Build context**: `../piri`
 
@@ -342,7 +342,7 @@ Both services are only emitted into `generated/compose/piri.yml` when at least o
 
 ---
 
-### 8. DynamoDB Local - Port 8000
+### 8. DynamoDB Local - Host port 15010 → container 8000
 
 **Role**: Local DynamoDB for persisting delegations and allow-lists.
 
@@ -365,7 +365,7 @@ Both services are only emitted into `generated/compose/piri.yml` when at least o
 
 ---
 
-### 9. Signing Service - Port 7446
+### 9. Signing Service - Host port 15030 → container 7446
 
 **Role**: Signs PDP blockchain operations on behalf of storage providers.
 
@@ -382,7 +382,7 @@ Both services are only emitted into `generated/compose/piri.yml` when at least o
 
 ---
 
-### 10. Delegator - Port 8080 (exposed as 8081)
+### 10. Delegator - Container port 80 (host 15040)
 
 **Role**: UCAN delegation service - issues delegations to registered storage providers.
 
@@ -816,19 +816,25 @@ This bypasses strict delegation chain verification for easier local development.
 
 ## Quick Reference: Service Ports
 
-| Service         | Internal Port | External Port | Protocol  |
-|-----------------|---------------|---------------|-----------|
-| blockchain      | 8545          | 8545          | JSON-RPC  |
-| redis           | 6379          | 6379          | Redis     |
-| ipni (finder)   | 3000          | 3000          | HTTP      |
-| ipni (admin)    | 3002          | 3002          | HTTP      |
-| ipni (ingest)   | 3003          | 3003          | HTTP      |
-| indexer         | 80            | 9000          | HTTP/UCAN |
-| upload          | 8080          | 8080          | HTTP/UCAN |
-| piri            | 3000          | 4000          | HTTP/UCAN |
-| dynamodb-local  | 8000          | 8000          | HTTP      |
-| signing-service | 7446          | 7446          | HTTP      |
-| delegator       | 8080          | 8081          | HTTP/UCAN |
+All host ports live in the `15XXX` range to avoid collision with common dev tools. Container-internal ports are unchanged.
+
+| Service         | Container Port | Host Port | Protocol  |
+|-----------------|----------------|-----------|-----------|
+| blockchain      | 8545           | 15000     | JSON-RPC  |
+| dynamodb-local  | 8000           | 15010     | HTTP      |
+| redis           | 6379           | 15020     | Redis     |
+| signing-service | 7446           | 15030     | HTTP      |
+| delegator       | 80             | 15040     | HTTP/UCAN |
+| indexer         | 80             | 15050     | HTTP/UCAN |
+| upload          | 80             | 15060     | HTTP/UCAN |
+| minio S3        | 9000           | 15070     | S3        |
+| minio console   | 9001           | 15071     | HTTP      |
+| smtp            | 25             | 15080     | SMTP      |
+| smtp4dev web    | 80             | 15081     | HTTP      |
+| ipni (finder)   | 3000           | 15090     | HTTP      |
+| ipni (admin)    | 3002           | 15091     | HTTP      |
+| ipni (p2p)      | 3003           | 15092     | libp2p    |
+| piri-N          | 3000           | 15100+N   | HTTP/UCAN |
 
 ---
 
@@ -881,7 +887,7 @@ guppy retrieve <space-did> <root-cid> ./downloads
 - Ensure PRINCIPAL_MAPPING is correct for did:web resolution
 
 ### Piri connection failures
-- Check piri health: `curl http://localhost:4000/`
+- Check piri health: `curl http://localhost:15100/`
 - Verify PIRI_DID matches piri's actual identity
 - Check signing-service is healthy for PDP operations
 

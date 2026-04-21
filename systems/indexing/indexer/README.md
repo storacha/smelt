@@ -9,10 +9,10 @@ Storacha's content claims caching layer.
 
 ## Ports
 
-| Port | Service | Description |
-|------|---------|-------------|
-| 6379 | redis | Redis cache |
-| 9000 | indexer | Indexing service API (container port 80) |
+| Host Port | Container Port | Service | Description |
+|-----------|----------------|---------|-------------|
+| 15020 | 6379 | redis | Redis cache |
+| 15050 | 80   | indexer | Indexing service API |
 
 ## Configuration
 

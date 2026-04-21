@@ -8,9 +8,9 @@ UCAN delegation service (registrar) for storage providers.
 
 ## Ports
 
-| Port | Service | Description |
-|------|---------|-------------|
-| 8081 | delegator | Delegator API (container port 8080) |
+| Host Port | Container Port | Service | Description |
+|-----------|----------------|---------|-------------|
+| 15040 | 80 | delegator | Delegator API |
 
 ## Configuration
 

@@ -17,7 +17,7 @@ services:
     # volume without a chown sidecar.
     user: "0:0"
     ports:
-      - "8000:8000"
+      - "15010:8000"
     # -dbPath persists tables to disk (default is in-memory). Required so
     # delegator's allow list and upload's provider registry survive restarts
     # and are captured by `smelt snapshot save`.
@@ -42,8 +42,8 @@ services:
       MINIO_ROOT_USER: minioadmin
       MINIO_ROOT_PASSWORD: minioadmin
     ports:
-      - "9010:9000"   # S3 API (external 9010, internal 9000 - avoids conflict with indexer on 9000)
-      - "9011:9001"   # Console (external 9011, internal 9001)
+      - "15070:9000"  # S3 API
+      - "15071:9001"  # Console
     volumes:
       - minio-data:/data
     healthcheck:
@@ -59,8 +59,8 @@ services:
   email:
     image: rnwood/smtp4dev:v3
     ports:
-      - "2525:25"
-      - "2580:80"   # Web UI / API
+      - "15080:25"
+      - "15081:80"  # Web UI / API
     networks:
       - storacha-network
 

@@ -37,10 +37,10 @@ services:
       ipni-init:
         condition: service_completed_successfully
     ports:
-      - "3000:3000"   # Finder (queries)
+      - "15090:3000"  # Finder (queries)
       # Note: 3001 (Ingest HTTP) not exposed to host - accessed via internal network
-      - "3002:3002"   # Admin
-      - "3003:3003"   # P2P (libp2p advertisement sync)
+      - "15091:3002"  # Admin
+      - "15092:3003"  # P2P (libp2p advertisement sync)
     volumes:
       - ipni-data:/data
     entrypoint: ["/usr/local/bin/storetheindex", "daemon"]
