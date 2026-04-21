@@ -8,7 +8,7 @@ deployment:
 server:
   host: "0.0.0.0"
   port: 80  # Use port 80 for did:web resolution
-  public_url: http://localhost:8080
+  public_url: http://localhost:15060
 
 identity:
   key_file: "/keys/upload.pem"

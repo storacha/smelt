@@ -18,13 +18,13 @@ Storacha's content claims caching layer.
 
 ## Ports
 
-| Port | Service | Description |
-|------|---------|-------------|
-| 3000 | ipni | IPNI finder (queries) |
-| 3002 | ipni | IPNI admin |
-| 3003 | ipni | IPNI ingest (advertisement sync) |
-| 6379 | redis | Redis cache |
-| 9000 | indexer | Indexing service (container port 80) |
+| Host Port | Container Port | Service | Description |
+|-----------|----------------|---------|-------------|
+| 15020 | 6379 | redis | Redis cache |
+| 15050 | 80   | indexer | Indexing service |
+| 15090 | 3000 | ipni | IPNI finder (queries) |
+| 15091 | 3002 | ipni | IPNI admin |
+| 15092 | 3003 | ipni | IPNI p2p (advertisement sync) |
 
 ## Standalone Usage
 

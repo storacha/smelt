@@ -8,9 +8,9 @@ Local Filecoin blockchain using Anvil for smart contract interactions.
 
 ## Ports
 
-| Port | Service | Description |
-|------|---------|-------------|
-| 8545 | blockchain | JSON-RPC endpoint |
+| Host Port | Container Port | Service | Description |
+|-----------|----------------|---------|-------------|
+| 15000 | 8545 | blockchain | JSON-RPC endpoint |
 
 ## Configuration
 

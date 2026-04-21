@@ -116,7 +116,7 @@ piri:
     # - storage: { db: postgres, blob: s3 }          # piri-3
 ```
 
-Each entry becomes a `piri-{N}` container exposed on host port `4000 + N`. You can mix and match storage backends per node. Up to 9 nodes total (limited by Anvil's pre-funded accounts). Shared `piri-postgres` and `piri-minio` services are included automatically when any node uses those backends.
+Each entry becomes a `piri-{N}` container exposed on host port `15100 + N`. You can mix and match storage backends per node. Up to 9 nodes total (limited by Anvil's pre-funded accounts). Shared `piri-postgres` and `piri-minio` services are included automatically when any node uses those backends.
 
 See [docs/MULTI_PIRI.md](MULTI_PIRI.md) for the full schema, database namespacing, hot-add/remove behavior, and Anvil wallet mapping. If you edit `smelt.yml` while the network is running, `make up` picks up the change (adding new nodes and `--remove-orphans` removing deleted ones).
 
@@ -252,7 +252,7 @@ Each piri node declared in `smelt.yml` (default 1, up to 9) runs its own multi-s
 2. **Register with allow list**: Add the DID to the delegator's DynamoDB allow list
 3. **Register on-chain**: Register as a storage provider with the PDP contracts via signing-service
 4. **Create proof set**: Submit a create-proof-set transaction and wait for confirmation
-5. **Start server**: Begin accepting storage requests on port `3000` (mapped to host `4000 + N`)
+5. **Start server**: Begin accepting storage requests on port `3000` (mapped to host `15100 + N`)
 
 All nodes initialize concurrently. First-time setup takes 1–3 minutes per node (with some amortization across parallel startup). Monitor a specific node with `docker compose logs -f piri-{N}`.
 
@@ -287,19 +287,19 @@ This runs `docker compose ps` and highlights health states. A healthy network lo
 
 ```
 NAME                     STATUS                        PORTS
-smelt-blockchain-1       Up 1 minute (healthy)         0.0.0.0:8545->8545/tcp
-smelt-delegator-1        Up 1 minute (healthy)         0.0.0.0:8081->80/tcp
-smelt-dynamodb-local-1   Up 1 minute (healthy)         0.0.0.0:8000->8000/tcp
-smelt-email-1            Up 1 minute
+smelt-blockchain-1       Up 1 minute (healthy)         0.0.0.0:15000->8545/tcp
+smelt-delegator-1        Up 1 minute (healthy)         0.0.0.0:15040->80/tcp
+smelt-dynamodb-local-1   Up 1 minute (healthy)         0.0.0.0:15010->8000/tcp
+smelt-email-1            Up 1 minute                   0.0.0.0:15080->25/tcp, 0.0.0.0:15081->80/tcp
 smelt-guppy-1            Up 1 minute
-smelt-indexer-1          Up 1 minute (healthy)         0.0.0.0:9000->80/tcp
-smelt-ipni-1             Up 1 minute (healthy)         0.0.0.0:3000-3003->3000-3003/tcp
+smelt-indexer-1          Up 1 minute (healthy)         0.0.0.0:15050->80/tcp
+smelt-ipni-1             Up 1 minute (healthy)         0.0.0.0:15090->3000/tcp, 0.0.0.0:15091->3002/tcp, 0.0.0.0:15092->3003/tcp
 smelt-ipni-init-1        Exited (0)
-smelt-minio-1            Up 1 minute (healthy)         0.0.0.0:9010-9011->9000-9001/tcp
-smelt-piri-0-1           Up 1 minute (healthy)         0.0.0.0:4000->3000/tcp
-smelt-redis-1            Up 1 minute (healthy)         0.0.0.0:6379->6379/tcp
-smelt-signing-service-1  Up 1 minute (healthy)         0.0.0.0:7446->7446/tcp
-smelt-upload-1           Up 1 minute (healthy)         0.0.0.0:8080->80/tcp
+smelt-minio-1            Up 1 minute (healthy)         0.0.0.0:15070->9000/tcp, 0.0.0.0:15071->9001/tcp
+smelt-piri-0-1           Up 1 minute (healthy)         0.0.0.0:15100->3000/tcp
+smelt-redis-1            Up 1 minute (healthy)         0.0.0.0:15020->6379/tcp
+smelt-signing-service-1  Up 1 minute (healthy)         0.0.0.0:15030->7446/tcp
+smelt-upload-1           Up 1 minute (healthy)         0.0.0.0:15060->80/tcp
 ```
 
 `ipni-init` is a one-shot initializer that exits with code 0 after
@@ -489,7 +489,7 @@ From your host machine (not inside containers):
 
 **Blockchain (JSON-RPC)**
 ```bash
-curl -X POST http://localhost:8545 \
+curl -X POST http://localhost:15000 \
   -H "Content-Type: application/json" \
   -d '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}'
 # Returns current block number
@@ -497,32 +497,32 @@ curl -X POST http://localhost:8545 \
 
 **Indexer (health check)**
 ```bash
-curl http://localhost:9000/
+curl http://localhost:15050/
 # Returns empty response with 200 OK if healthy
 ```
 
 **Piri (health check)**
 ```bash
-curl http://localhost:4000/readyz
+curl http://localhost:15100/readyz
 # Returns {"status":"ok"} if healthy. For additional nodes:
-# curl http://localhost:4001/readyz, :4002/readyz, etc.
+# curl http://localhost:15101/readyz, :15102/readyz, etc.
 ```
 
 **Delegator (health check)**
 ```bash
-curl http://localhost:8081/healthcheck
+curl http://localhost:15040/healthcheck
 # Returns health status
 ```
 
 **Signing Service (health check)**
 ```bash
-curl http://localhost:7446/healthcheck
+curl http://localhost:15030/healthcheck
 # Returns health status
 ```
 
 **DynamoDB Local (web console)**
 
-Open in your browser: `http://localhost:8000/shell/`
+Open in your browser: `http://localhost:15010/shell/`
 
 This provides a JavaScript shell for querying DynamoDB tables. Useful for inspecting:
 - `delegator-allow-list`: DIDs authorized to receive delegations
@@ -532,7 +532,7 @@ This provides a JavaScript shell for querying DynamoDB tables. Useful for inspec
 
 **IPNI (finder)**
 ```bash
-curl http://localhost:3000/health
+curl http://localhost:15090/health
 # Returns "ready" if healthy
 ```
 
@@ -556,7 +556,7 @@ docker compose logs --tail=200 <service-name>
 
 Common causes:
 
-- **IPNI unhealthy**: IPNI needs time to initialize. Wait another minute. If still failing, check for port conflicts on 3000-3003.
+- **IPNI unhealthy**: IPNI needs time to initialize. Wait another minute. If still failing, check for port conflicts on 15090-15092.
 
 - **Piri unhealthy**: Piri's initialization is complex. Check logs for:
   - "Failed to extract DID" — key file issue
@@ -617,19 +617,19 @@ sudo chown -R $USER:$USER generated/
 ### Port Already in Use
 
 ```
-Error starting userland proxy: listen tcp4 0.0.0.0:8545: bind: address already in use
+Error starting userland proxy: listen tcp4 0.0.0.0:15000: bind: address already in use
 ```
 
 Something else is using that port. Find it:
 
 ```bash
 # macOS/Linux
-lsof -i :8545
+lsof -i :15000
 # or
-netstat -tlnp | grep 8545
+netstat -tlnp | grep 15000
 ```
 
-Either stop the conflicting process or modify the port mappings in the relevant `compose.yml` file.
+Smelt uses a dedicated `15XXX` range specifically to avoid collisions with common dev tools; if something on your system is already bound inside that range, either stop the conflicting process or change the host side of the port mapping in the relevant `compose.yml` file.
 
 ### Guppy Commands Fail with UCAN Errors
 
@@ -760,8 +760,8 @@ The blockchain runs Anvil with pre-deployed PDP (Provable Data Possession) smart
 
 ```bash
 # Using cast (from Foundry)
-cast block-number --rpc-url http://localhost:8545
-cast balance 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266 --rpc-url http://localhost:8545
+cast block-number --rpc-url http://localhost:15000
+cast balance 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266 --rpc-url http://localhost:15000
 ```
 
 ### Modify Guppy's Configuration
@@ -792,13 +792,15 @@ For deep protocol understanding:
 
 | Service | Host Port | Health Check |
 |---------|-----------|--------------|
-| Blockchain | 8545 | `curl -X POST localhost:8545 -d '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}'` |
-| DynamoDB | 8000 | `http://localhost:8000/shell/` (browser) |
-| Redis | 6379 | `redis-cli -h localhost ping` |
-| Signing Service | 7446 | `curl localhost:7446/healthcheck` |
-| Delegator | 8081 | `curl localhost:8081/healthcheck` |
-| IPNI | 3000 | `curl localhost:3000/health` |
-| Indexer | 9000 | `curl localhost:9000/` |
-| Piri-0 | 4000 | `curl localhost:4000/readyz` |
-| Piri-N | 4000+N | `curl localhost:$((4000+N))/readyz` |
-| Upload | 8080 | `curl localhost:8080/health` |
+| Blockchain | 15000 | `curl -X POST localhost:15000 -d '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}'` |
+| DynamoDB | 15010 | `http://localhost:15010/shell/` (browser) |
+| Redis | 15020 | `redis-cli -h localhost -p 15020 ping` |
+| Signing Service | 15030 | `curl localhost:15030/healthcheck` |
+| Delegator | 15040 | `curl localhost:15040/healthcheck` |
+| Indexer | 15050 | `curl localhost:15050/` |
+| Upload | 15060 | `curl localhost:15060/health` |
+| MinIO S3 / console | 15070 / 15071 | `curl localhost:15070/minio/health/live` / browser `http://localhost:15071` |
+| smtp4dev UI | 15081 | browser `http://localhost:15081` |
+| IPNI | 15090 | `curl localhost:15090/health` |
+| Piri-0 | 15100 | `curl localhost:15100/readyz` |
+| Piri-N | 15100+N | `curl localhost:$((15100+N))/readyz` |

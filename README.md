@@ -38,8 +38,8 @@ Wait until all services show `healthy`. This typically takes 30-60 seconds after
 make shell-guppy
 
 # Create an account (inside the container)
-# Visit http://localhost:2580 and click the link (or programmatically get
-# messages from http://localhost:2580/api/messages and POST to the link).
+# Visit http://localhost:15081 and click the link (or programmatically get
+# messages from http://localhost:15081/api/messages and POST to the link).
 guppy login your@email.com
 
 # Create a storage space (returns the space DID on stdout)
@@ -55,21 +55,22 @@ You now have content stored on your local Storacha network, complete with blockc
 
 ## What's Running
 
-| Service         | Port             | What It Does                                                                  |
-|-----------------|------------------|-------------------------------------------------------------------------------|
-| blockchain      | 8545             | Local EVM (Anvil) with PDP smart contracts                                    |
-| dynamodb-local  | 8000             | State persistence for services                                                |
-| minio           | 9010             | S3-compatibe storage                                                          |
-| redis           | 6379             | Cache backend for indexer                                                     |
-| signing-service | 7446             | Signs PDP blockchain operations                                               |
-| delegator       | 8081             | UCAN delegation service                                                       |
-| ipni            | 3000, 3002, 3003 | Content discovery indexer                                                     |
-| indexer         | 9000             | Content claims cache                                                          |
-| piri-{N}        | 4000+N           | Storage node(s) with PDP proofs; N declared in `smelt.yml` (default 1, max 9) |
-| upload          | 8080             | Upload orchestration service                                                  |
-| guppy           | —                | CLI client for uploads (no exposed port)                                      |
-| smtp4dev        | 2525             | SMTP server                                                                   |
-| smtp4dev        | 2580             | Email UI and API                                                              |
+All host ports live in a dedicated `15XXX` range to avoid collision with common dev tools (3000, 5432, 6379, 8000, 8080, 8545, 9000, ...).
+
+| Service         | Host Port          | What It Does                                                                     |
+|-----------------|--------------------|----------------------------------------------------------------------------------|
+| blockchain      | 15000              | Local EVM (Anvil) with PDP smart contracts                                       |
+| dynamodb-local  | 15010              | State persistence for services                                                   |
+| redis           | 15020              | Cache backend for indexer                                                        |
+| signing-service | 15030              | Signs PDP blockchain operations                                                  |
+| delegator       | 15040              | UCAN delegation service                                                          |
+| indexer         | 15050              | Content claims cache                                                             |
+| upload          | 15060              | Upload orchestration service                                                     |
+| minio           | 15070, 15071       | S3-compatible storage (S3 API, web console)                                      |
+| smtp4dev        | 15080, 15081       | SMTP server, Email UI and API                                                    |
+| ipni            | 15090, 15091, 15092| Content discovery (finder, admin, p2p)                                           |
+| piri-{N}        | 15100+N            | Storage node(s) with PDP proofs; N declared in `smelt.yml` (default 1, max 9)    |
+| guppy           | —                  | CLI client for uploads (no exposed port)                                         |
 
 ## Architecture
 
@@ -80,20 +81,20 @@ flowchart TB
     end
 
     subgraph Services
-        upload["upload :8080"]
-        piri["piri :4000"]
-        indexer["indexer :9000"]
-        signing["signing-service :7446"]
-        delegator["delegator :8081"]
+        upload["upload :15060"]
+        piri["piri :15100"]
+        indexer["indexer :15050"]
+        signing["signing-service :15030"]
+        delegator["delegator :15040"]
     end
 
     subgraph Infrastructure
-        blockchain["blockchain :8545"]
-        ipni["ipni :3000"]
-        redis["redis :6379"]
-        dynamodb["dynamodb-local :8000"]
-        minio["minio :9010"]
-        email["smtp4dev :2525"]
+        blockchain["blockchain :15000"]
+        ipni["ipni :15090"]
+        redis["redis :15020"]
+        dynamodb["dynamodb-local :15010"]
+        minio["minio :15070"]
+        email["smtp4dev :15080"]
     end
 
     guppy --> upload

@@ -8,9 +8,9 @@ PDP (Proof of Data Possession) operation signing for storage providers.
 
 ## Ports
 
-| Port | Service | Description |
-|------|---------|-------------|
-| 7446 | signing-service | Signing API |
+| Host Port | Container Port | Service | Description |
+|-----------|----------------|---------|-------------|
+| 15030 | 7446 | signing-service | Signing API |
 
 ## Configuration
 

@@ -34,7 +34,7 @@ services:
   my-service:
     image: myorg/my-service:dev
     ports:
-      - "XXXX:80"  # Host:Container - describe what this exposes
+      - "15XXX:80"  # Host:Container - pick the next free slot in smelt's 15XXX range
     volumes:
       - my-service-data:/data
       - ../../generated/keys/my-service.pem:/keys/my-service.pem:ro
@@ -104,7 +104,7 @@ Example cross-service communication:
 
 ```yaml
 environment:
-  - PIRI_ENDPOINT=http://piri:3000
+  - PIRI_ENDPOINT=http://piri-0:3000
   - INDEXER_ENDPOINT=http://indexer:80
   - BLOCKCHAIN_RPC=ws://blockchain:8545
 ```
@@ -152,12 +152,11 @@ Available variables:
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `ANVIL_BLOCK_TIME` | 3 | Seconds between blockchain blocks |
-| `UPLOAD_PORT` | 8080 | External port for upload service |
 | `UPLOAD_LOG_LEVEL` | info | Upload service verbosity |
-| `INDEXER_PORT` | 9000 | External port for indexer |
 | `INDEXER_LOG_LEVEL` | info | Indexer verbosity |
-| `PIRI_PORT` | 3000 | Piri's internal port |
 | `PIRI_LOG_LEVEL` | info | Piri verbosity |
+
+Host ports are not configurable via environment variables — they live directly in the per-service `compose.yml` files, all within smelt's dedicated `15XXX` range. Edit the `compose.yml` file if you need to change one.
 
 Variables are referenced in compose files using `${VARIABLE:-default}` syntax.
 
@@ -218,9 +217,9 @@ services:
   toxiproxy:
     image: ghcr.io/shopify/toxiproxy:2.7.0
     ports:
-      - "8474:8474"   # Toxiproxy API
-      - "3334:3334"   # Proxy to piri
-      - "9001:9001"   # Proxy to indexer
+      - "15200:8474"  # Toxiproxy API (host 15200, within smelt's 15XXX range)
+      - "15201:3334"  # Proxy to piri
+      - "15202:9001"  # Proxy to indexer
     volumes:
       - ./toxiproxy.json:/config/toxiproxy.json:ro
     command: ["-config", "/config/toxiproxy.json"]
@@ -235,7 +234,7 @@ services:
   {
     "name": "piri-proxy",
     "listen": "0.0.0.0:3334",
-    "upstream": "piri:3000"
+    "upstream": "piri-0:3000"
   },
   {
     "name": "indexer-proxy",
@@ -251,25 +250,25 @@ With Toxiproxy running, apply network conditions via its API:
 
 ```bash
 # Add 200ms latency to piri requests
-curl -X POST http://localhost:8474/proxies/piri-proxy/toxics \
+curl -X POST http://localhost:15200/proxies/piri-proxy/toxics \
   -H "Content-Type: application/json" \
   -d '{"name":"latency","type":"latency","attributes":{"latency":200}}'
 
 # Add 10% packet loss (connections dropped)
-curl -X POST http://localhost:8474/proxies/piri-proxy/toxics \
+curl -X POST http://localhost:15200/proxies/piri-proxy/toxics \
   -H "Content-Type: application/json" \
   -d '{"name":"timeout","type":"timeout","attributes":{"timeout":0},"toxicity":0.1}'
 
 # Limit bandwidth to 1KB/s (simulates slow networks)
-curl -X POST http://localhost:8474/proxies/piri-proxy/toxics \
+curl -X POST http://localhost:15200/proxies/piri-proxy/toxics \
   -H "Content-Type: application/json" \
   -d '{"name":"bandwidth","type":"bandwidth","attributes":{"rate":1}}'
 
 # Remove a toxic
-curl -X DELETE http://localhost:8474/proxies/piri-proxy/toxics/latency
+curl -X DELETE http://localhost:15200/proxies/piri-proxy/toxics/latency
 
 # Reset all toxics on a proxy
-curl -X POST http://localhost:8474/proxies/piri-proxy/toxics/populate -d '[]'
+curl -X POST http://localhost:15200/proxies/piri-proxy/toxics/populate -d '[]'
 ```
 
 ### Routing Traffic Through Toxiproxy
@@ -471,7 +470,7 @@ Then run `make up` (or `make generate` first, then `make up`). The generator doe
 
 - Allocates an Anvil wallet (up to 9 nodes total, limited by pre-funded accounts)
 - Creates keys: `generated/keys/piri-{N}.pem` and `generated/keys/piri-{N}-wallet.hex`
-- Emits a service definition into `generated/compose/piri.yml` exposed on host port `4000 + N`
+- Emits a service definition into `generated/compose/piri.yml` exposed on host port `15100 + N`
 - Includes shared `piri-postgres` and/or `piri-minio` services if any node uses those backends
 - Creates per-node postgres databases (`piri_{N}`) via the `piri-postgres-init` sidecar
 - Sets per-node S3 bucket prefix (`piri-{N}-`) via environment variable
@@ -513,13 +512,13 @@ docker compose logs -f piri 2>&1 | grep -E "(invocation|receipt|capability)"
 
 ### Checking DynamoDB State
 
-DynamoDB Local provides a web shell at http://localhost:8000/shell/
+DynamoDB Local provides a web shell at http://localhost:15010/shell/
 
 To list tables:
 
 ```javascript
 var dynamodb = new AWS.DynamoDB({
-  endpoint: 'http://localhost:8000',
+  endpoint: 'http://localhost:15010',
   region: 'us-west-1'
 });
 dynamodb.listTables({}, function(err, data) {
@@ -530,10 +529,10 @@ dynamodb.listTables({}, function(err, data) {
 Or use the AWS CLI:
 
 ```bash
-aws dynamodb list-tables --endpoint-url http://localhost:8000 --region us-west-1
+aws dynamodb list-tables --endpoint-url http://localhost:15010 --region us-west-1
 
 aws dynamodb scan --table-name delegator-allow-list \
-  --endpoint-url http://localhost:8000 --region us-west-1
+  --endpoint-url http://localhost:15010 --region us-west-1
 ```
 
 ### Inspecting Blockchain State
@@ -542,22 +541,22 @@ Query the local Anvil chain via JSON-RPC:
 
 ```bash
 # Get latest block number
-curl -s -X POST http://localhost:8545 \
+curl -s -X POST http://localhost:15000 \
   -H "Content-Type: application/json" \
   -d '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}' | jq
 
 # Get chain ID
-curl -s -X POST http://localhost:8545 \
+curl -s -X POST http://localhost:15000 \
   -H "Content-Type: application/json" \
   -d '{"jsonrpc":"2.0","method":"eth_chainId","params":[],"id":1}' | jq
 
 # Get account balance (replace address)
-curl -s -X POST http://localhost:8545 \
+curl -s -X POST http://localhost:15000 \
   -H "Content-Type: application/json" \
   -d '{"jsonrpc":"2.0","method":"eth_getBalance","params":["0x70997970C51812dc3A010C7d01b50e0d17dc79C8","latest"],"id":1}' | jq
 
 # Get contract storage slot
-curl -s -X POST http://localhost:8545 \
+curl -s -X POST http://localhost:15000 \
   -H "Content-Type: application/json" \
   -d '{"jsonrpc":"2.0","method":"eth_getStorageAt","params":["0x0DCd1Bf9A1b36cE34237eEaFef220932846BCD82","0x0","latest"],"id":1}' | jq
 ```
@@ -582,10 +581,10 @@ docker compose logs -t piri | tail -100
 
 ```bash
 # Test connectivity between containers
-docker compose exec guppy curl -v http://piri:3000/
+docker compose exec guppy curl -v http://piri-0:3000/
 
 # Check DNS resolution
-docker compose exec guppy nslookup piri
+docker compose exec guppy nslookup piri-0
 
 # List containers on the network
 docker network inspect storacha-network --format '{{range .Containers}}{{.Name}} {{end}}'
@@ -597,11 +596,11 @@ Sometimes a service gets into a bad state. Reset it without affecting others:
 
 ```bash
 # Stop and remove container + volume
-docker compose rm -sf piri
-docker volume rm smelt_piri-data
+docker compose rm -sf piri-0
+docker volume rm smelt_piri-0-data
 
 # Restart just that service
-docker compose up -d piri
+docker compose up -d piri-0
 ```
 
 For a complete reset, `make fresh` removes everything and rebuilds from scratch.
@@ -621,9 +620,9 @@ Brief description of what this system does.
 
 ## Ports
 
-| Port | Service | Description |
-|------|---------|-------------|
-| XXXX | service | What this port exposes |
+| Host Port | Container Port | Service | Description |
+|-----------|----------------|---------|-------------|
+| 15XXX | ... | service | What this port exposes |
 
 ## Configuration
 

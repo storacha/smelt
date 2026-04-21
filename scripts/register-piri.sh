@@ -12,7 +12,7 @@ if [ -z "$1" ]; then
 fi
 
 DID="$1"
-ENDPOINT_URL="${DYNAMODB_ENDPOINT:-http://localhost:8000}"
+ENDPOINT_URL="${DYNAMODB_ENDPOINT:-http://localhost:15010}"
 TABLE_NAME="${DYNAMODB_TABLE:-delegator-allow-list}"
 REGION="${AWS_REGION:-us-west-1}"
 

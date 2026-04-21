@@ -110,8 +110,8 @@ func TestGeneratePiriComposeSingleNode(t *testing.T) {
 	}
 
 	// Should contain the correct port.
-	if !strings.Contains(yaml, "4000:3000") {
-		t.Error("expected port mapping 4000:3000")
+	if !strings.Contains(yaml, "15100:3000") {
+		t.Error("expected port mapping 15100:3000")
 	}
 }
 
@@ -137,7 +137,7 @@ func TestGeneratePiriComposeMultiNode(t *testing.T) {
 	}
 
 	// Port mappings.
-	for _, port := range []string{"4000:3000", "4001:3000", "4002:3000"} {
+	for _, port := range []string{"15100:3000", "15101:3000", "15102:3000"} {
 		if !strings.Contains(yaml, port) {
 			t.Errorf("expected port mapping %s", port)
 		}
