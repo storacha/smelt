@@ -40,5 +40,6 @@ import "embed"
 // (importers of pkg/stack) can call stack.WithEmbeddedSnapshot without
 // knowing anything about smelt's on-disk layout. New directories
 // committed under snapshots/ are automatically included on next build.
+//
 //go:embed snapshots
 var EmbeddedFiles embed.FS
