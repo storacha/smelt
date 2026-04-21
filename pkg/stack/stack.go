@@ -134,6 +134,15 @@ func NewStack(ctx context.Context, t *testing.T, opts ...Option) (*Stack, error)
 		return nil, fmt.Errorf("write piri compose: %w", err)
 	}
 
+	// Strip fixed host-port bindings from every extracted compose file
+	// (including the piri.yml just written) and point sprue's public_url at
+	// the in-network hostname. Docker then assigns ephemeral ports per stack,
+	// so parallel tests — or a running `make up` — can't collide on fixed
+	// numbers. See pkg/stack/ports.go.
+	if err := rewriteExtractedForEphemeralPorts(tempDir); err != nil {
+		return nil, fmt.Errorf("rewrite ephemeral ports: %w", err)
+	}
+
 	// 4. Ensure Docker network exists
 	if err := ensureNetwork(ctx, "storacha-network"); err != nil {
 		return nil, fmt.Errorf("ensure network: %w", err)
