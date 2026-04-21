@@ -10,13 +10,13 @@ Shared infrastructure services used by multiple systems.
 
 ## Ports
 
-| Port | Service | Description |
-|------|---------|-------------|
-| 2525 | email   | SMTP endpoint |
-| 2580 | email   | Web UI / API |
-| 8000 | dynamodb-local | DynamoDB endpoint |
-| 9002 | minio | S3 API endpoint |
-| 9003 | minio | Console endpoint |
+| Host Port | Container Port | Service | Description |
+|-----------|----------------|---------|-------------|
+| 15010 | 8000 | dynamodb-local | DynamoDB endpoint |
+| 15070 | 9000 | minio | S3 API endpoint |
+| 15071 | 9001 | minio | Console endpoint |
+| 15080 | 25   | email (smtp4dev) | SMTP endpoint |
+| 15081 | 80   | email (smtp4dev) | Web UI / API |
 
 ## Standalone Usage
 

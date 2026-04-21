@@ -8,7 +8,7 @@ services:
     image: ${UPLOAD_IMAGE:-ghcr.io/storacha/sprue:main}
     command: ["serve", "--config", "/etc/sprue/config.yaml"]
     ports:
-      - "8080:80"
+      - "15060:80"
     volumes:
       - ../../generated/keys/upload.pem:/keys/upload.pem:ro
       # Mount the full generated keys and proofs directories so post_start.sh

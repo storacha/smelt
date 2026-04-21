@@ -8,9 +8,9 @@ Mock w3infra replacement for upload coordination.
 
 ## Ports
 
-| Port | Service | Description        |
-|------|---------|--------------------|
-| 8080 | upload  | Upload service API |
+| Host Port | Container Port | Service | Description |
+|-----------|----------------|---------|-------------|
+| 15060 | 80 | upload | Upload service API |
 
 ## Configuration
 

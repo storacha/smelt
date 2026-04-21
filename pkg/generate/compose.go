@@ -100,7 +100,7 @@ func buildPiriService(node manifest.ResolvedPiriNode) ComposeService {
 	return ComposeService{
 		Image:      image,
 		User:       "0:0",
-		Ports:      []string{fmt.Sprintf("%d:3000", 4000+node.Index)},
+		Ports:      []string{fmt.Sprintf("%d:3000", 15100+node.Index)},
 		Entrypoint: []string{"/entrypoint.sh"},
 		Volumes: []string{
 			fmt.Sprintf("%s-data:/data/piri", node.Name),
@@ -187,7 +187,7 @@ func buildMinioService() ComposeService {
 	return ComposeService{
 		Image:   "minio/minio:latest",
 		Command: []string{"server", "/data", "--console-address", ":9001"},
-		Ports:   []string{"9002:9000", "9003:9001"},
+		Ports:   []string{"15072:9000", "15073:9001"},
 		Environment: []string{
 			"MINIO_ROOT_USER=minioadmin",
 			"MINIO_ROOT_PASSWORD=minioadmin",

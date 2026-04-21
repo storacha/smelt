@@ -106,7 +106,7 @@ docker compose logs ipni
 
 **What to look for**:
 - "No space left on device" — disk full, see [Container Issues](#no-space-left-on-device)
-- Port binding errors — something else using ports 3000-3003
+- Port binding errors — something else using ports 15090-15092
 - Datastore initialization failures — corrupted state, run `make clean && make up`
 
 **Solution**: Wait 60 seconds. If still unhealthy after that, check for the errors above.
@@ -152,7 +152,7 @@ Could not get delegation: connection refused
 |---------|-------|----------|
 | "Failed to connect to signing-service" | signing-service not healthy | Check signing-service: `docker compose logs signing-service` |
 | "Could not get delegation" | delegator not healthy | Check delegator: `docker compose logs delegator` |
-| "Registration with blockchain failed" | blockchain not healthy | Check blockchain: `curl http://localhost:8545` |
+| "Registration with blockchain failed" | blockchain not healthy | Check blockchain: `curl http://localhost:15000` |
 | "Failed to extract DID" | Key file missing or malformed | Run `make nuke && make up` |
 
 **Key insight**: Piri depends on five services. If piri is unhealthy, one of its dependencies likely is too. Check `make status` and fix unhealthy dependencies first.
@@ -357,7 +357,7 @@ docker compose logs indexer | grep -i "claim/cache\|assert/index"
 **Solution**:
 1. Wait a few seconds and retry — indexing is asynchronous
 2. Re-upload the content if indexing failed
-3. Check that the indexer is healthy: `curl http://localhost:9000/`
+3. Check that the indexer is healthy: `curl http://localhost:15050/`
 
 ---
 
@@ -421,7 +421,7 @@ This resets everything — blockchain, keys, and service state — ensuring cons
 **Diagnostic**:
 ```bash
 # Check blockchain is responding
-curl -X POST http://localhost:8545 \
+curl -X POST http://localhost:15000 \
   -H "Content-Type: application/json" \
   -d '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}'
 
@@ -503,27 +503,20 @@ Level 3 and 4 affect other Docker projects on your machine. Use with caution.
 
 ### Port Already in Use
 
-**Full error**: `Error starting userland proxy: listen tcp4 0.0.0.0:8545: bind: address already in use`
+**Full error**: `Error starting userland proxy: listen tcp4 0.0.0.0:15000: bind: address already in use`
 
 **Diagnostic**:
 ```bash
-# Find what's using the port (replace 8545 with the conflicting port)
-lsof -i :8545
+# Find what's using the port (replace 15000 with the conflicting port)
+lsof -i :15000
 
 # Alternative on Linux
-ss -tlnp | grep 8545
+ss -tlnp | grep 15000
 ```
 
-**Solution**: Stop the conflicting process, or modify the port mapping in the relevant `compose.yml` file.
+**Solution**: Smelt uses a dedicated `15XXX` range specifically to avoid collisions with common dev tools (3000, 5432, 6379, 8000, 8080, 8545, 9000). If something on your system is already bound inside that range, either stop the conflicting process or change the host side of the port mapping in the relevant `compose.yml` file.
 
-Common port conflicts:
-
-| Port | Service | Common conflicts |
-|------|---------|------------------|
-| 8545 | blockchain | Other Ethereum nodes, Foundry, Hardhat |
-| 3000 | ipni | Development servers (React, Next.js, etc.) |
-| 6379 | redis | Other Redis instances |
-| 8000 | dynamodb-local | Other dev servers |
+In the rare case that the `15XXX` port maps to a development tool on your system, smelt's host ports all live in that range — check there first.
 
 ---
 
@@ -613,14 +606,14 @@ docker compose exec indexer curl http://ipni:3000/health
 
 ### Host Can't Reach Services
 
-**Symptoms**: `curl http://localhost:8080/` fails from your host machine.
+**Symptoms**: `curl http://localhost:15060/` fails from your host machine.
 
 **Diagnostic**:
 ```bash
 # Check port mappings
 docker compose ps
 
-# Verify the port is published (shows "0.0.0.0:8080->80/tcp")
+# Verify the port is published (shows "0.0.0.0:15060->80/tcp")
 ```
 
 **Common causes**:
@@ -785,27 +778,27 @@ docker compose logs -f indexer
 
 ```bash
 # Blockchain (should return block number)
-curl -s -X POST http://localhost:8545 \
+curl -s -X POST http://localhost:15000 \
   -H "Content-Type: application/json" \
   -d '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}' | jq
 
 # IPNI (should return "ready")
-curl -s http://localhost:3000/health
+curl -s http://localhost:15090/health
 
 # Indexer (should return 200 OK)
-curl -s -o /dev/null -w "%{http_code}" http://localhost:9000/
+curl -s -o /dev/null -w "%{http_code}" http://localhost:15050/
 
-# Piri-0 readyz (additional nodes live on 4001, 4002, ...)
-curl -s http://localhost:4000/readyz
+# Piri-0 readyz (additional nodes live on 15101, 15102, ...)
+curl -s http://localhost:15100/readyz
 
 # Upload (should return 200 OK)
-curl -s -o /dev/null -w "%{http_code}" http://localhost:8080/health
+curl -s -o /dev/null -w "%{http_code}" http://localhost:15060/health
 
 # Delegator (should return health status)
-curl -s http://localhost:8081/healthcheck
+curl -s http://localhost:15040/healthcheck
 
 # Signing Service (should return health status)
-curl -s http://localhost:7446/healthcheck
+curl -s http://localhost:15030/healthcheck
 ```
 
 ### Network and Infrastructure

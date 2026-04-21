@@ -286,28 +286,36 @@ s.PiriCount()         // number of nodes
 
 ## Service Ports
 
-| Service | Port | Protocol | Description |
-|---------|------|----------|-------------|
-| blockchain | 8545 | JSON-RPC | Anvil local EVM |
-| dynamodb-local | 8000 | HTTP | State persistence |
-| redis | 6379 | Redis | Indexer cache |
-| signing-service | 7446 | HTTP | PDP signing |
-| delegator | 8081 | HTTP/UCAN | Delegation issuance |
-| ipni | 3000, 3002, 3003 | HTTP | Content discovery |
-| indexer | 9000 | HTTP/UCAN | Claims cache |
-| piri-{N} | 4000 + N | HTTP/UCAN | Storage node(s); N defined by `smelt.yml` (default 1, max 9) |
-| upload | 8080 | HTTP/UCAN | Upload coordination |
+All host-side ports live in a dedicated `15XXX` range to avoid collision with common dev tools (3000, 5432, 6379, 8000, 8080, 8545, 9000, ...). Container-internal ports are unchanged; only the host side of each mapping lives in the 15XXX range.
+
+| Service | Host Port | Protocol | Description |
+|---------|-----------|----------|-------------|
+| blockchain | 15000 | JSON-RPC | Anvil local EVM |
+| dynamodb-local | 15010 | HTTP | State persistence |
+| redis | 15020 | Redis | Indexer cache |
+| signing-service | 15030 | HTTP | PDP signing |
+| delegator | 15040 | HTTP/UCAN | Delegation issuance |
+| indexer | 15050 | HTTP/UCAN | Claims cache |
+| upload | 15060 | HTTP/UCAN | Upload coordination |
+| minio S3 | 15070 | S3 | Shared object storage |
+| minio console | 15071 | HTTP | MinIO web console |
+| smtp | 15080 | SMTP | smtp4dev inbound |
+| smtp4dev web | 15081 | HTTP | smtp4dev web UI / API |
+| ipni finder | 15090 | HTTP | Content discovery (queries) |
+| ipni admin | 15091 | HTTP | IPNI admin |
+| ipni p2p | 15092 | libp2p | Advertisement sync |
+| piri-{N} | 15100 + N | HTTP/UCAN | Storage node(s); N defined by `smelt.yml` (default 1, max 9) |
 | guppy | (none) | CLI | Client container |
 
 **Piri Shared Storage** (only emitted when at least one node uses that backend):
 
-| Service | Port | Protocol | Description |
-|---------|------|----------|-------------|
+| Service | Host Port | Protocol | Description |
+|---------|-----------|----------|-------------|
 | piri-postgres | 5432 | PostgreSQL | Shared instance; per-node databases `piri_0`, `piri_1`, ... |
-| piri-minio | 9002 | S3 | Shared instance; per-node bucket prefix `piri-{N}-` |
-| piri-minio | 9003 | HTTP | MinIO console |
+| piri-minio S3 | 15072 | S3 | Per-node bucket prefix `piri-{N}-` |
+| piri-minio console | 15073 | HTTP | MinIO console |
 
-Note: Some services use different internal vs external ports (e.g., piri listens on 3000 internally, exposed as 4000+N).
+Note: Container-internal ports differ from host ports. E.g., piri listens on 3000 internally, exposed as 15100+N on the host; upload listens on 80 internally, exposed as 15060.
 
 ## Configuration Files
 
@@ -395,15 +403,15 @@ Common causes:
 
 ### UCAN/Delegation Errors
 
-- Verify delegator is healthy: `curl http://localhost:8081/`
+- Verify delegator is healthy: `curl http://localhost:15040/`
 - Check that upload service can reach DynamoDB
 - Confirm `PRINCIPAL_MAPPING` environment variables are correct
 
 ### Piri Connection Failures
 
-- Check piri health: `curl http://localhost:4000/`
+- Check piri health: `curl http://localhost:15100/`
 - Verify signing-service is healthy (needed for PDP operations)
-- Check blockchain is running: `curl -X POST http://localhost:8545 -H "Content-Type: application/json" -d '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}'`
+- Check blockchain is running: `curl -X POST http://localhost:15000 -H "Content-Type: application/json" -d '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}'`
 
 ### "Handler Not Found" Errors
 

@@ -88,7 +88,7 @@ Each piri node gets:
 | Resource | Pattern | Example |
 |----------|---------|---------|
 | Service name | `piri-{i}` | `piri-0`, `piri-1` |
-| Host port | `4000 + i` | `4000`, `4001`, `4002` |
+| Host port | `15100 + i` | `15100`, `15101`, `15102` |
 | Identity key | `piri-{i}.pem` | Unique DID per node |
 | EVM wallet | `piri-{i}-wallet.hex` | From Anvil pre-funded accounts |
 | Data volume | `piri-{i}-data` | Isolated persistent storage |
