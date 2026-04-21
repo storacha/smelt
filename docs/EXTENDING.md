@@ -44,6 +44,11 @@ services:
       - MY_SERVICE_DID=did:web:my-service
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:80/health"]
+      # start_interval (docker engine 25+) polls every 1s during start_period
+      # so compose's depends_on gate detects ready services quickly. Drops to
+      # `interval` once the first probe succeeds. Required for smelt to keep
+      # its sub-15s snapshot-restored boot time.
+      start_interval: 1s
       interval: 10s
       timeout: 5s
       retries: 5
