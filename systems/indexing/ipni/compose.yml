@@ -53,6 +53,7 @@ services:
       - OTEL_SERVICE_NAME=ipni
     healthcheck:
       test: ["CMD", "/usr/local/bin/storetheindex", "admin", "status"]
+      start_interval: 1s
       interval: 5s
       timeout: 5s
       retries: 10

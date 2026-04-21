@@ -1,0 +1,104 @@
+{
+  "name": "3-piri-filesystem-sqlite",
+  "created_at": "2026-04-21T01:25:48.524254892Z",
+  "volumes": [
+    "minio-data",
+    "ipni-data",
+    "dynamodb-data",
+    "guppy-data",
+    "piri-0-data",
+    "piri-1-data",
+    "piri-2-data"
+  ],
+  "keys": [
+    "delegator.pem",
+    "delegator.pub",
+    "etracker.pem",
+    "etracker.pub",
+    "indexer.pem",
+    "indexer.pub",
+    "payer-key.hex",
+    "piri-0-wallet.hex",
+    "piri-0.pem",
+    "piri-0.pub",
+    "piri-1-wallet.hex",
+    "piri-1.pem",
+    "piri-1.pub",
+    "piri-2-wallet.hex",
+    "piri-2.pem",
+    "piri-2.pub",
+    "signing-service.pem",
+    "signing-service.pub",
+    "upload.pem",
+    "upload.pub"
+  ],
+  "proofs": [
+    "egress-tracking-proof.txt",
+    "indexing-service-proof.txt",
+    "piri-0-proof.txt",
+    "piri-1-proof.txt",
+    "piri-2-proof.txt"
+  ],
+  "images": {
+    "blockchain": {
+      "tag": "filecoin-localdev:local",
+      "digest": "sha256:83bfc6399fa91637efe638f51a437a530089030ce46feb137b8f4b1e6ea20c6d"
+    },
+    "delegator": {
+      "tag": "ghcr.io/storacha/delegator:main",
+      "digest": "ghcr.io/storacha/delegator@sha256:8e7ba8393a181f0e010bd23b0cb56e5b67475acc92ebfdef7628452e018e7294"
+    },
+    "dynamodb-local": {
+      "tag": "amazon/dynamodb-local:latest",
+      "digest": "amazon/dynamodb-local@sha256:d89f8fcc6b1a39cb35976c248ed42a28c66ae00dc043099210f5571e42648ab4"
+    },
+    "email": {
+      "tag": "rnwood/smtp4dev:v3",
+      "digest": "rnwood/smtp4dev@sha256:25c434c1900a9c5b61e17ead0a774d9e81b80554d05cf64719d69e5ea8c66537"
+    },
+    "guppy": {
+      "tag": "ghcr.io/storacha/guppy:0.7.0",
+      "digest": "ghcr.io/storacha/guppy@sha256:bd8e8644fe0b2d1cb25d9c9cc1ae3b7253a30430cce93c75d9af08c1ff31fd8e"
+    },
+    "indexer": {
+      "tag": "ghcr.io/storacha/indexing-service:main",
+      "digest": "ghcr.io/storacha/indexing-service@sha256:2165653eeec0f524ee3ce48502e89d16f1ef8bf7ba3e5ec389ce400e5c9fac05"
+    },
+    "ipni": {
+      "tag": "ghcr.io/storacha/storetheindex:main",
+      "digest": "ghcr.io/storacha/storetheindex@sha256:efb649d8e2e263bb30111b7ae53e40e887140b113c02d2fe2382ab4f9f28a731"
+    },
+    "ipni-init": {
+      "tag": "ghcr.io/storacha/storetheindex:main",
+      "digest": "ghcr.io/storacha/storetheindex@sha256:efb649d8e2e263bb30111b7ae53e40e887140b113c02d2fe2382ab4f9f28a731"
+    },
+    "minio": {
+      "tag": "minio/minio:latest",
+      "digest": "minio/minio@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e"
+    },
+    "piri-0": {
+      "tag": "ghcr.io/storacha/piri:main",
+      "digest": "ghcr.io/storacha/piri@sha256:d0b6870ec74b1b2ee32433eb4a5ab988927f32439c60fa55f1b898ea8a81f12b"
+    },
+    "piri-1": {
+      "tag": "ghcr.io/storacha/piri:main",
+      "digest": "ghcr.io/storacha/piri@sha256:d0b6870ec74b1b2ee32433eb4a5ab988927f32439c60fa55f1b898ea8a81f12b"
+    },
+    "piri-2": {
+      "tag": "ghcr.io/storacha/piri:main",
+      "digest": "ghcr.io/storacha/piri@sha256:d0b6870ec74b1b2ee32433eb4a5ab988927f32439c60fa55f1b898ea8a81f12b"
+    },
+    "redis": {
+      "tag": "redis:7-alpine",
+      "digest": "redis@sha256:8b81dd37ff027bec4e516d41acfbe9fe2460070dc6d4a4570a2ac5b9d59df065"
+    },
+    "signing-service": {
+      "tag": "ghcr.io/storacha/piri-signing-service:main",
+      "digest": "ghcr.io/storacha/piri-signing-service@sha256:4c0e37afabd32e1159a9dd833d0da4eb08569d935632466393ae3ba3483b2fec"
+    },
+    "upload": {
+      "tag": "ghcr.io/storacha/sprue:main",
+      "digest": "ghcr.io/storacha/sprue@sha256:21decde24a8e395b44fcc264b8f72b40cca78944ff57b6dad6254da64453e425"
+    }
+  }
+}

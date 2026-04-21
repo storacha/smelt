@@ -35,4 +35,11 @@ import "embed"
 //go:embed systems/upload/compose.yml
 //go:embed systems/upload/config/*
 //go:embed systems/upload/post_start.sh
+
+// Curated snapshots shipped with the Go module so external consumers
+// (importers of pkg/stack) can call stack.WithEmbeddedSnapshot without
+// knowing anything about smelt's on-disk layout. New directories
+// committed under snapshots/ are automatically included on next build.
+//
+//go:embed snapshots
 var EmbeddedFiles embed.FS

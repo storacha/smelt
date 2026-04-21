@@ -2,20 +2,58 @@
 
 When things go wrong. Find your symptom, follow the diagnostic steps, apply the solution.
 
+See [SNAPSHOTS.md](SNAPSHOTS.md) for issues specific to `smelt snapshot
+save/load` (permission denied writing scratch, volume-in-use, image tag
+drift warnings).
+
 ---
 
 ## Table of Contents
 
-1. [Service Health Issues](#service-health-issues)
-2. [Upload Errors](#upload-errors)
-3. [Retrieval Errors](#retrieval-errors)
-4. [Blockchain Issues](#blockchain-issues)
-5. [Container Issues](#container-issues)
-6. [Network Issues](#network-issues)
-7. [Key and Identity Issues](#key-and-identity-issues)
-8. [Nuclear Options](#nuclear-options)
-9. [Getting Help](#getting-help)
-10. [Quick Diagnostic Commands](#quick-diagnostic-commands)
+1. [Prerequisites Failing](#prerequisites-failing)
+2. [Service Health Issues](#service-health-issues)
+3. [Upload Errors](#upload-errors)
+4. [Retrieval Errors](#retrieval-errors)
+5. [Blockchain Issues](#blockchain-issues)
+6. [Container Issues](#container-issues)
+7. [Network Issues](#network-issues)
+8. [Key and Identity Issues](#key-and-identity-issues)
+9. [Nuclear Options](#nuclear-options)
+10. [Getting Help](#getting-help)
+11. [Quick Diagnostic Commands](#quick-diagnostic-commands)
+
+---
+
+## Prerequisites Failing
+
+### "docker engine X is below the required minimum of 25.0"
+
+**Cause**: Smelt requires docker engine 25+ for healthcheck
+`start_interval` and for compose's top-level `name:` key. The Makefile's
+`check-docker` target fails early if you're on an older engine.
+
+**Diagnostic**:
+```bash
+docker version --format '{{.Server.Version}}'
+```
+
+**Solution**: Upgrade docker. On Ubuntu with docker.com's apt repo:
+```bash
+sudo apt-get update
+sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+docker version --format '{{.Server.Version}}'   # should be 25+
+```
+
+macOS: upgrade Docker Desktop via the app's auto-update or a fresh
+download from docker.com.
+
+### "could not determine docker engine version"
+
+**Cause**: The docker daemon isn't running.
+
+**Solution**: Start it.
+- Linux: `sudo systemctl start docker`
+- macOS: launch Docker Desktop.
 
 ---
 
@@ -245,8 +283,8 @@ This regenerates all keys and proofs.
 
 **Diagnostic**:
 ```bash
-# Check piri logs for registration
-docker compose logs piri | grep -i "allow.list\|registering DID"
+# Check piri logs for registration (use piri-N for each node in smelt.yml)
+docker compose logs piri-0 | grep -i "allow.list\|registering DID"
 
 # Expected:
 # Registering DID with allow list...
@@ -254,7 +292,7 @@ docker compose logs piri | grep -i "allow.list\|registering DID"
 ```
 
 **Solution**:
-1. Restart piri: `docker compose restart piri`
+1. Restart piri: `docker compose restart piri-0` (or the affected piri-N)
 2. Wait for initialization to complete (up to 3 minutes)
 3. If still failing: `make nuke && make up`
 
@@ -275,12 +313,14 @@ Check which services show unhealthy or starting. The upload flow requires:
 - indexer (claim caching)
 - dynamodb-local (state persistence)
 
-**Common cause**: Piri initialization still in progress. Piri's first-time setup takes up to 3 minutes. Check:
+**Common cause**: Piri initialization still in progress. Piri's
+first-time setup takes up to 3 minutes per node. Check:
 ```bash
-docker compose logs -f piri
+docker compose logs -f piri-0
 ```
 
-Wait for `Server listening on :3000` before retrying uploads.
+Wait for piri's healthcheck to report `(healthy)` in `make status`
+before retrying uploads.
 
 ---
 
@@ -352,7 +392,7 @@ guppy upload <file>
 
 **Solution**: Re-upload the file. If the problem persists, check piri's storage volume:
 ```bash
-docker compose exec piri ls -la /data/piri/
+docker compose exec piri-0 ls -la /data/piri/
 ```
 
 If storage is corrupted: `make clean && make up` to reset volumes.
@@ -755,8 +795,8 @@ curl -s http://localhost:3000/health
 # Indexer (should return 200 OK)
 curl -s -o /dev/null -w "%{http_code}" http://localhost:9000/
 
-# Piri piri-0 (should return 200 OK). Additional nodes live on 4001, 4002, ...
-curl -s -o /dev/null -w "%{http_code}" http://localhost:4000/
+# Piri-0 readyz (additional nodes live on 4001, 4002, ...)
+curl -s http://localhost:4000/readyz
 
 # Upload (should return 200 OK)
 curl -s -o /dev/null -w "%{http_code}" http://localhost:8080/health
@@ -791,22 +831,22 @@ ls -la generated/proofs/
 ### Inter-Service Connectivity
 
 ```bash
-# Test upload -> piri connectivity
-docker compose exec upload wget -q -O- http://piri:3000/ && echo "OK" || echo "FAILED"
+# Test upload -> piri-0 connectivity (service DNS name is piri-0, piri-1, ...)
+docker compose exec upload wget -q -O- http://piri-0:3000/readyz && echo "OK" || echo "FAILED"
 
 # Test upload -> indexer connectivity
 docker compose exec upload wget -q -O- http://indexer:80/ && echo "OK" || echo "FAILED"
 
-# Test piri -> blockchain connectivity
-docker compose exec piri wget -q -O- --post-data='{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}' \
+# Test piri-0 -> blockchain connectivity
+docker compose exec piri-0 wget -q -O- --post-data='{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}' \
   --header='Content-Type: application/json' http://blockchain:8545 && echo "OK" || echo "FAILED"
 ```
 
 ### Service-Specific Diagnostics
 
 ```bash
-# Piri initialization status
-docker compose logs piri | grep -E "init|register|delegation|serving" | tail -20
+# Piri initialization status (substitute piri-0 with piri-N for additional nodes)
+docker compose logs piri-0 | grep -E "init|register|delegation|serving" | tail -20
 
 # Upload handler registration
 docker compose logs upload | grep -E "handler|capability" | head -20

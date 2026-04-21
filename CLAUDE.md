@@ -45,6 +45,7 @@ smelt/
 ├── pkg/
 │   ├── manifest/            # smelt.yml schema and resolution
 │   ├── generate/            # Compose + key generation from manifest
+│   ├── snapshot/            # Save/load/list/rm for stack state checkpoints
 │   └── stack/               # Go test stack API (testcontainers-go)
 ├── scripts/
 │   └── init.sh             # Environment init (proofs + docker network)
@@ -58,6 +59,8 @@ smelt/
 │   │   └── payer-key.hex   # Blockchain transaction signing
 │   ├── compose/            # Generated piri.yml (from `make generate`)
 │   ├── proofs/             # UCAN delegation proofs
+│   ├── snapshots/          # Saved stack-state checkpoints (snapshot save/load)
+│   ├── snapshot-scratch/   # Working chain state + session manifest when loaded
 │   └── generate-proofs.sh  # Proof generation (shell; TODO: migrate to Go)
 ├── systems/                 # Service modules (each self-contained)
 │   ├── blockchain/         # Local EVM (Anvil) with PDP contracts
@@ -76,6 +79,7 @@ smelt/
     ├── GETTING_STARTED.md  # First-time setup walkthrough
     ├── ARCHITECTURE.md     # Service interaction diagrams and data flow
     ├── MULTI_PIRI.md       # Multi-piri design and manifest reference
+    ├── SNAPSHOTS.md        # Snapshot save/load (skip slow cold-boot)
     ├── TROUBLESHOOTING.md  # Common issues and diagnostics
     └── EXTENDING.md        # Adding services and customizations
 ```
@@ -226,6 +230,26 @@ make regen    # Regenerate all keys and proofs
 # Then restart services to pick up new keys:
 make clean && make up
 ```
+
+### Snapshots
+
+Cold-boot of a stack pays for contract deploy + piri registration + delegator/upload provider registration — tens of seconds to minutes depending on topology. Snapshots capture the full post-registration state and let subsequent boots reach the same point in ~10s.
+
+```bash
+# With the stack healthy:
+./smelt snapshot save <name>        # freeze current state to generated/snapshots/<name>/
+./smelt snapshot list               # table of saved snapshots
+./smelt snapshot rm <name>          # delete a snapshot
+
+# Boot from a snapshot (loads + starts in one step):
+make up SNAPSHOT=<name>             # or SNAPSHOT=/abs/path/to/snapshot dir
+```
+
+`make up SNAPSHOT=X` installs the snapshot's `smelt.yml` as a *session manifest* at `generated/snapshot-scratch/smelt.yml` (the project's tracked `smelt.yml` is never touched). While the session manifest exists, `smelt generate` and `smelt snapshot save` read from it. Subsequent `make up` (no SNAPSHOT=) stays on the same topology until `make clean` or `make nuke` removes the session manifest.
+
+The blockchain container dumps chain state to `generated/snapshot-scratch/` on every SIGTERM, so `make down` + `make up` resumes from your current chain, not from the snapshot's frozen state.
+
+See [docs/SNAPSHOTS.md](docs/SNAPSHOTS.md) for the full picture — what's captured, session semantics, gotchas, troubleshooting.
 
 ### Piri Storage Backends
 

@@ -10,7 +10,11 @@ import (
 
 // Options controls the generation process.
 type Options struct {
-	ManifestPath string // Path to smelt.yml
+	// ManifestPath is an optional explicit manifest override. When empty
+	// Generate falls back to manifest.ResolveManifestPath which picks the
+	// session manifest (from a prior snapshot load) when present and the
+	// project manifest otherwise.
+	ManifestPath string
 	ProjectDir   string // Project root directory
 	Force        bool   // Overwrite existing keys
 }
@@ -20,11 +24,22 @@ type Result struct {
 	PiriComposePath string
 	KeysDir         string
 	NodeCount       int
+	// ManifestPath is the path Generate actually read from.
+	ManifestPath string
 }
 
 // Generate reads the manifest, generates keys, and produces Docker Compose files.
 func Generate(opts Options) (*Result, error) {
-	m, err := manifest.Parse(opts.ManifestPath)
+	manifestPath := opts.ManifestPath
+	fromSession := false
+	if manifestPath == "" {
+		manifestPath, fromSession = manifest.ResolveManifestPath(opts.ProjectDir)
+	}
+	if fromSession {
+		fmt.Printf("Using session manifest: %s\n", manifestPath)
+	}
+
+	m, err := manifest.Parse(manifestPath)
 	if err != nil {
 		return nil, fmt.Errorf("parse manifest: %w", err)
 	}
@@ -60,5 +75,6 @@ func Generate(opts Options) (*Result, error) {
 		PiriComposePath: piriPath,
 		KeysDir:         keysDir,
 		NodeCount:       len(nodes),
+		ManifestPath:    manifestPath,
 	}, nil
 }

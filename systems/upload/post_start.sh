@@ -26,7 +26,17 @@ for proof_file in /proofs/piri-*-proof.txt; do
     endpoint="http://${node_name}:3000"
 
     echo "post_start: registering ${node_name} (${did}) at ${endpoint}"
-    sprue client admin provider add "$endpoint" "$proof"
+    # Tolerate "already registered" — expected when the stack booted from a
+    # smelt snapshot that captured upload's dynamodb provider registry. Any
+    # other failure is still fatal.
+    if add_err=$(sprue client admin provider add "$endpoint" "$proof" 2>&1); then
+        :
+    elif echo "$add_err" | grep -q "already registered"; then
+        echo "post_start:   (${node_name} already registered — continuing)"
+    else
+        echo "$add_err" >&2
+        exit 1
+    fi
     sprue client admin provider weight set "$did" 100 100
 
     registered=$((registered + 1))
