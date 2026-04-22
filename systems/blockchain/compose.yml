@@ -6,8 +6,12 @@
 services:
   blockchain:
     image: ${BLOCKCHAIN_IMAGE:-ghcr.io/storacha/filecoin-localdev:main}
+    # Port mapping is env-var interpolated so pkg/stack can override to
+    # `"8545"` (container-only, ephemeral host port) for parallel SDK
+    # test stacks. `make up` leaves the var unset and gets the fixed
+    # 15XXX default.
     ports:
-      - "15000:8545"
+      - "${SMELT_BLOCKCHAIN_PORT:-15000:8545}"
     volumes:
       # Chain state lives in generated/snapshot-scratch/. The `/output` dir
       # mount receives the SIGTERM dump from the entrypoint on every stop,

@@ -134,21 +134,24 @@ func NewStack(ctx context.Context, t *testing.T, opts ...Option) (*Stack, error)
 		return nil, fmt.Errorf("write piri compose: %w", err)
 	}
 
-	// Strip fixed host-port bindings from every extracted compose file
-	// (including the piri.yml just written) and point sprue's public_url at
-	// the in-network hostname. Docker then assigns ephemeral ports per stack,
-	// so parallel tests — or a running `make up` — can't collide on fixed
-	// numbers. See pkg/stack/ports.go.
-	if err := rewriteExtractedForEphemeralPorts(tempDir); err != nil {
-		return nil, fmt.Errorf("rewrite ephemeral ports: %w", err)
-	}
-
-	// 4. Build environment with image overrides.
-	//    (No shared network to ensure — rewriteExtractedForEphemeralPorts
-	//    above drops `external: true` from the root compose so each stack
-	//    provisions its own project-scoped `storacha-network`. Parallel
-	//    stacks otherwise raced on creating a single shared network.)
+	// 4. Build environment passed to compose. Starts with image overrides
+	//    and then fills in the SMELT_* vars that the compose files'
+	//    `${VAR:-default}` port mappings and network `external:` flag read
+	//    from. This is how pkg/stack flips the stack into "test mode"
+	//    without editing YAML at runtime:
+	//      - every host-side port binding becomes ephemeral (Docker assigns
+	//        a random port per stack, so parallel tests don't collide on
+	//        fixed 15XXX numbers)
+	//      - the storacha-network declaration becomes non-external, so each
+	//        stack gets its own project-scoped network instead of all
+	//        sharing the one `make up` bridge
+	//      - sprue's public_url is overridden to the in-network hostname
+	//        so validation emails embed a URL the ExecDoer-based clicker
+	//        can reach
 	env := cfg.buildEnv()
+	for k, v := range testModeEnv(resolvedNodes) {
+		env[k] = v
+	}
 
 	// 5. Prepare compose files (main + any overrides)
 	composePath := filepath.Join(tempDir, "compose.yml")

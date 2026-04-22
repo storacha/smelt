@@ -9,7 +9,7 @@ services:
     user: "0:0"  # Run as root for volume permissions (key files are 600)
     ports:
       # Internal port 80 for did:web resolution
-      - "15040:80"
+      - "${SMELT_DELEGATOR_PORT:-15040:80}"
     command: ["serve", "--host", "0.0.0.0", "--port", "80"]
     volumes:
       - ../../generated/keys/delegator.pem:/keys/delegator.pem:ro
