@@ -1,0 +1,86 @@
+name: E2E
+
+# Diagnostic workflow for the Docker-backed end-to-end tests. Runs the
+# stack-spinning TestUploadAndRetrieve from both the root package and
+# tests/e2e/, and — on failure — dumps every smelt-ish container's logs
+# (both to the job output and as an uploaded artifact). This exists
+# because the unified go-test workflow only surfaces compose up's
+# top-level error ("upload hook exited with status 1") and eats the
+# actual stderr from the failing post_start hook.
+
+on:
+  pull_request:
+  push:
+    branches: ['main']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event_name == 'push' && github.sha || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  e2e:
+    # Pin to 24.04 rather than -latest so the Docker version doesn't drift
+    # from under us. The runner's preinstalled Docker here is 28.x, well
+    # past smelt's 25+ requirement.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v5
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      - name: Docker info
+        run: |
+          docker version
+          docker compose version
+
+      - name: Run e2e tests
+        # The root package has example_test.go and tests/e2e has smoke_test.go;
+        # both spin up stacks and both hit the same post_start failure. `-tags e2e`
+        # also pulls in tests/e2e/main_test.go's CleanupLeaked TestMain, which
+        # sweeps stray containers from prior CI runs on the same shared runner.
+        run: go test -tags e2e -run TestUploadAndRetrieve -v -timeout 15m ./tests/e2e/... .
+
+      - name: Dump container state on failure
+        if: failure()
+        run: |
+          mkdir -p /tmp/container-logs
+
+          {
+            echo "=== docker ps -a ==="
+            docker ps -a
+            echo
+            echo "=== docker network ls ==="
+            docker network ls
+            echo
+            echo "=== docker volume ls ==="
+            docker volume ls
+          } | tee /tmp/container-logs/_overview.txt
+
+          for c in $(docker ps -a --format '{{.Names}}'); do
+            # Capture to a file for the artifact, and tail to the job output
+            # so the most recent output is visible inline without needing to
+            # download anything.
+            docker logs "$c" > "/tmp/container-logs/$c.log" 2>&1 || true
+            echo "::group::$c"
+            tail -200 "/tmp/container-logs/$c.log"
+            echo "::endgroup::"
+          done
+
+      - name: Upload container logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: container-logs
+          path: /tmp/container-logs/
+          if-no-files-found: ignore
+          retention-days: 7
