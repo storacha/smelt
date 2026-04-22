@@ -44,11 +44,13 @@ jobs:
           docker compose version
 
       - name: Run e2e tests
-        # The root package has example_test.go and tests/e2e has smoke_test.go;
-        # both spin up stacks and both hit the same post_start failure. `-tags e2e`
-        # also pulls in tests/e2e/main_test.go's CleanupLeaked TestMain, which
-        # sweeps stray containers from prior CI runs on the same shared runner.
-        run: go test -tags e2e -run TestUploadAndRetrieve -v -timeout 15m ./tests/e2e/... .
+        # `-tags e2e` pulls in tests/e2e/main_test.go's CleanupLeaked
+        # TestMain (which sweeps stray containers from prior CI runs on
+        # the same shared runner) along with every test file gated by
+        # that build tag — smoke_test.go (parallel subtests over the
+        # four storage-backend permutations) and snapshot_test.go (boot
+        # from committed 3-piri snapshot and upload once).
+        run: go test -tags e2e -v -timeout 15m ./tests/e2e/...
 
       - name: Dump container state on failure
         if: failure()
