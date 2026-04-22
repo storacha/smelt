@@ -55,7 +55,15 @@ func NewContainerClient(stack *stack.Stack, options ...Option) (*ContainerClient
 		option(c)
 	}
 	if c.validator == nil {
-		validator, err := NewSMTP4DevLoginValidator(stack.EmailEndpoint())
+		// Fetch emails from smtp4dev over its host-mapped API port (fine with
+		// ephemeral ports — MappedPort resolves it), but POST the validation
+		// link from inside the Docker network. Sprue's public_url points at
+		// the `upload` DNS name in test mode, so the host can't reach it.
+		clicker := &ExecDoer{Stack: stack, Service: "guppy"}
+		validator, err := NewSMTP4DevLoginValidator(
+			stack.EmailEndpoint(),
+			WithSMTP4DevLoginValidatorClicker(clicker),
+		)
 		if err != nil {
 			return nil, err
 		}

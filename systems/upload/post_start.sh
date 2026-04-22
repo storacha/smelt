@@ -8,7 +8,30 @@
 
 set -e
 
-sleep 1  # give the core upload service a moment to settle
+# Compose routes post_start stdout/stderr somewhere that neither `docker logs`
+# nor testcontainers-go's compose client surfaces. Redirect to PID 1's
+# stdout/stderr so everything this script prints shows up in `docker logs
+# <upload>` — including the captured error before `exit 1`, which is otherwise
+# lost and makes CI failures opaque.
+exec > /proc/1/fd/1 2> /proc/1/fd/2
+
+# Wait for sprue's HTTP server to actually be listening before making admin
+# calls. post_start fires when the container's main process starts, not when
+# it's ready — sprue's fx DI takes a few seconds locally, and tens of seconds
+# on a loaded CI runner. The previous `sleep 1` here was a race: under CI load
+# the CLI below hit connection-refused before sprue bound port 80, the script
+# exited 1, and compose killed the container.
+echo "post_start: waiting for sprue to start serving on :80..."
+waited=0
+until curl -sf http://localhost:80/health >/dev/null 2>&1; do
+    if [ "$waited" -ge 120 ]; then
+        echo "post_start: sprue never started serving after ${waited}s — aborting" >&2
+        exit 1
+    fi
+    sleep 1
+    waited=$((waited + 1))
+done
+echo "post_start: sprue is serving (took ${waited}s)"
 
 registered=0
 for proof_file in /proofs/piri-*-proof.txt; do

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os/exec"
 	"strings"
+	"testing"
 )
 
 // stackProjectPrefix is the compose project-name prefix every pkg/stack
@@ -13,6 +14,35 @@ import (
 // networks created by a stack inherit this as a name prefix, which lets
 // the sweeper find them without knowing individual test names.
 const stackProjectPrefix = "smeltery-"
+
+// dumpProjectLogs writes every container's logs for the given compose project
+// to t.Log. Called from NewStack's t.Cleanup on test failure — logs survive
+// into the test output (and thus into CI job output) even after subsequent
+// teardown and Ryuk reaping remove the containers themselves.
+//
+// Uses the docker CLI (rather than the testcontainers API) so we don't need
+// to enumerate service names, and so it works even when the compose stack
+// failed mid-Up with only some services running.
+func dumpProjectLogs(t *testing.T, projectName string) {
+	t.Helper()
+	filter := "label=com.docker.compose.project=" + projectName
+	out, err := exec.Command("docker", "ps", "-a",
+		"--filter", filter,
+		"--format", "{{.Names}}").Output()
+	if err != nil {
+		t.Logf("smeltery: listing containers for project %s failed: %v", projectName, err)
+		return
+	}
+	names := splitLines(string(out))
+	if len(names) == 0 {
+		t.Logf("smeltery: no containers found for project %s", projectName)
+		return
+	}
+	for _, name := range names {
+		logs, _ := exec.Command("docker", "logs", "--tail", "200", name).CombinedOutput()
+		t.Logf("=== container logs: %s ===\n%s", name, logs)
+	}
+}
 
 // CleanupLeaked removes containers and volumes left behind by prior
 // pkg/stack test runs that didn't tear down cleanly (SIGKILL, panic,

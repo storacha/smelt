@@ -27,4 +27,11 @@ include:
 
 networks:
   storacha-network:
-    external: true
+    # `make up` uses the shared external network (created by
+    # `make init`) so that `cd systems/X && docker compose up` can
+    # drop into the same network for standalone per-system runs.
+    # pkg/stack's SDK test path sets SMELT_NETWORK_EXTERNAL=false so
+    # each test stack gets its own project-scoped network — otherwise
+    # parallel stacks all collide on the one shared bridge (duplicate
+    # service DNS names across projects).
+    external: ${SMELT_NETWORK_EXTERNAL:-true}
