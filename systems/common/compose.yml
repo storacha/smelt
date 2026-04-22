@@ -25,7 +25,13 @@ services:
     volumes:
       - dynamodb-data:/data
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:8000/shell/ || exit 0"]
+      # The previous `|| exit 0` fallback here made the healthcheck always
+      # report healthy, so `depends_on: condition: service_healthy`
+      # greenlit dependents before dynamodb had actually bound port 8000.
+      # Sprue would then try to create its tables and crash on
+      # `dial tcp: connection refused`. /shell/ is dynamodb-local's JS
+      # web shell; it returns 200 once the process is serving.
+      test: ["CMD-SHELL", "curl -sf http://localhost:8000/shell/"]
       start_interval: 1s
       interval: 5s
       timeout: 3s
