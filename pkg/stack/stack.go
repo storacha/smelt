@@ -143,15 +143,14 @@ func NewStack(ctx context.Context, t *testing.T, opts ...Option) (*Stack, error)
 		return nil, fmt.Errorf("rewrite ephemeral ports: %w", err)
 	}
 
-	// 4. Ensure Docker network exists
-	if err := ensureNetwork(ctx, "storacha-network"); err != nil {
-		return nil, fmt.Errorf("ensure network: %w", err)
-	}
-
-	// 5. Build environment with image overrides
+	// 4. Build environment with image overrides.
+	//    (No shared network to ensure — rewriteExtractedForEphemeralPorts
+	//    above drops `external: true` from the root compose so each stack
+	//    provisions its own project-scoped `storacha-network`. Parallel
+	//    stacks otherwise raced on creating a single shared network.)
 	env := cfg.buildEnv()
 
-	// 6. Prepare compose files (main + any overrides)
+	// 5. Prepare compose files (main + any overrides)
 	composePath := filepath.Join(tempDir, "compose.yml")
 	composeFiles := []string{composePath}
 
