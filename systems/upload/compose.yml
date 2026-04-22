@@ -8,7 +8,16 @@ services:
     image: ${UPLOAD_IMAGE:-ghcr.io/storacha/sprue:main}
     command: ["serve", "--config", "/etc/sprue/config.yaml"]
     ports:
-      - "15060:80"
+      - "${SMELT_UPLOAD_PORT:-15060:80}"
+    # Pass SPRUE_SERVER_PUBLIC_URL through from the host env when set.
+    # sprue/viper treats it as an override for `server.public_url` in
+    # config.yaml. pkg/stack's SDK test path sets this to
+    # `http://upload:80` so validation emails embed an in-network URL
+    # the ExecDoer-based clicker can reach (since test stacks don't
+    # have a stable host port on sprue). `make up` leaves it unset and
+    # falls back to the config.yaml value.
+    environment:
+      - SPRUE_SERVER_PUBLIC_URL
     volumes:
       - ../../generated/keys/upload.pem:/keys/upload.pem:ro
       # Mount the full generated keys and proofs directories so post_start.sh
