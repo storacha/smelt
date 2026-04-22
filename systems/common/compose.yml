@@ -17,7 +17,7 @@ services:
     # volume without a chown sidecar.
     user: "0:0"
     ports:
-      - "15010:8000"
+      - "${SMELT_DYNAMODB_PORT:-15010:8000}"
     # -dbPath persists tables to disk (default is in-memory). Required so
     # delegator's allow list and upload's provider registry survive restarts
     # and are captured by `smelt snapshot save`.
@@ -25,7 +25,15 @@ services:
     volumes:
       - dynamodb-data:/data
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:8000/shell/ || exit 0"]
+      # DynamoDB Local 3.0+ dropped the JS web shell at /shell/, and it
+      # has no other endpoint that returns 2xx for a plain GET — only
+      # signed DynamoDB API POSTs get real responses. That's why an
+      # `-sf` HTTP probe against any path doesn't work (and why the
+      # previous `|| exit 0` here was masking a genuinely-broken check).
+      # Probe the TCP port directly via bash's /dev/tcp pseudo-device:
+      # we only care whether the JVM has bound port 8000, not what it
+      # says back.
+      test: ["CMD-SHELL", "bash -c ':>/dev/tcp/127.0.0.1/8000'"]
       start_interval: 1s
       interval: 5s
       timeout: 3s
@@ -42,8 +50,8 @@ services:
       MINIO_ROOT_USER: minioadmin
       MINIO_ROOT_PASSWORD: minioadmin
     ports:
-      - "15070:9000"  # S3 API
-      - "15071:9001"  # Console
+      - "${SMELT_MINIO_S3_PORT:-15070:9000}"        # S3 API
+      - "${SMELT_MINIO_CONSOLE_PORT:-15071:9001}"   # Console
     volumes:
       - minio-data:/data
     healthcheck:
@@ -59,8 +67,8 @@ services:
   email:
     image: rnwood/smtp4dev:v3
     ports:
-      - "15080:25"
-      - "15081:80"  # Web UI / API
+      - "${SMELT_SMTP_PORT:-15080:25}"
+      - "${SMELT_SMTP_WEB_PORT:-15081:80}"  # Web UI / API
     networks:
       - storacha-network
 

@@ -134,15 +134,26 @@ func NewStack(ctx context.Context, t *testing.T, opts ...Option) (*Stack, error)
 		return nil, fmt.Errorf("write piri compose: %w", err)
 	}
 
-	// 4. Ensure Docker network exists
-	if err := ensureNetwork(ctx, "storacha-network"); err != nil {
-		return nil, fmt.Errorf("ensure network: %w", err)
+	// 4. Build environment passed to compose. Starts with image overrides
+	//    and then fills in the SMELT_* vars that the compose files'
+	//    `${VAR:-default}` port mappings and network `external:` flag read
+	//    from. This is how pkg/stack flips the stack into "test mode"
+	//    without editing YAML at runtime:
+	//      - every host-side port binding becomes ephemeral (Docker assigns
+	//        a random port per stack, so parallel tests don't collide on
+	//        fixed 15XXX numbers)
+	//      - the storacha-network declaration becomes non-external, so each
+	//        stack gets its own project-scoped network instead of all
+	//        sharing the one `make up` bridge
+	//      - sprue's public_url is overridden to the in-network hostname
+	//        so validation emails embed a URL the ExecDoer-based clicker
+	//        can reach
+	env := cfg.buildEnv()
+	for k, v := range testModeEnv(resolvedNodes) {
+		env[k] = v
 	}
 
-	// 5. Build environment with image overrides
-	env := cfg.buildEnv()
-
-	// 6. Prepare compose files (main + any overrides)
+	// 5. Prepare compose files (main + any overrides)
 	composePath := filepath.Join(tempDir, "compose.yml")
 	composeFiles := []string{composePath}
 
@@ -188,6 +199,15 @@ func NewStack(ctx context.Context, t *testing.T, opts ...Option) (*Stack, error)
 	// down — otherwise it leaks containers into the developer's Docker.
 	// t.Cleanup runs whether the test passes, fails, or returns early.
 	t.Cleanup(func() {
+		// Dump container logs BEFORE teardown so CI has something to
+		// look at when a stack failed to come up. The subsequent
+		// stack.Close (or Ryuk, when the test process exits) removes
+		// the containers, and our workflow's post-run log-dump step
+		// finds nothing. Going through t.Log routes output into the
+		// test's own stream.
+		if t.Failed() {
+			dumpProjectLogs(t, projectName)
+		}
 		if cfg.keepOnFailure && t.Failed() {
 			t.Logf("smeltery: keeping stack running due to test failure (tempDir: %s)", tempDir)
 			return

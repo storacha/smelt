@@ -11,21 +11,44 @@ import (
 	"github.com/storacha/smelt/pkg/clients/smtp4dev"
 )
 
+// Clicker issues the POST against the validation link pulled out of the email
+// body. It is split from the smtp4dev API client because the two live on
+// different planes: the API is fetched from the host via smtp4dev's mapped
+// port, whereas the validation link — once sprue's public_url is in-network
+// (see pkg/stack/ports.go) — only resolves from inside the Docker network.
+type Clicker interface {
+	Do(req *http.Request) (*http.Response, error)
+}
+
 type clickerConfig struct {
 	httpClient *http.Client
+	clicker    Clicker
 }
 
 type SMTP4DevLoginValidatorOption func(*clickerConfig)
 
+// WithSMTP4DevLoginValidatorHTTPClient sets the HTTP client used to hit the
+// smtp4dev API. Defaults to [http.DefaultClient].
 func WithSMTP4DevLoginValidatorHTTPClient(httpClient *http.Client) SMTP4DevLoginValidatorOption {
 	return func(c *clickerConfig) {
 		c.httpClient = httpClient
 	}
 }
 
+// WithSMTP4DevLoginValidatorClicker sets the doer used to POST the validation
+// link parsed out of the email body. Defaults to [http.DefaultClient]; pass
+// an in-network doer (e.g. [ExecDoer]) when the validation URL is only
+// reachable from inside the Docker network.
+func WithSMTP4DevLoginValidatorClicker(clicker Clicker) SMTP4DevLoginValidatorOption {
+	return func(c *clickerConfig) {
+		c.clicker = clicker
+	}
+}
+
 type SMTP4DevLoginValidator struct {
 	Client     *smtp4dev.Client
 	HTTPClient *http.Client
+	Clicker    Clicker
 }
 
 // NewSMTP4DevLoginValidator returns a new [SMTP4DevLoginValidator] that can
@@ -36,6 +59,9 @@ func NewSMTP4DevLoginValidator(endpoint string, options ...SMTP4DevLoginValidato
 	for _, option := range options {
 		option(&cfg)
 	}
+	if cfg.clicker == nil {
+		cfg.clicker = cfg.httpClient
+	}
 	client, err := smtp4dev.New(endpoint, smtp4dev.WithHTTPClient(cfg.httpClient))
 	if err != nil {
 		return nil, err
@@ -43,6 +69,7 @@ func NewSMTP4DevLoginValidator(endpoint string, options ...SMTP4DevLoginValidato
 	return &SMTP4DevLoginValidator{
 		Client:     client,
 		HTTPClient: cfg.httpClient,
+		Clicker:    cfg.clicker,
 	}, nil
 }
 
@@ -79,7 +106,12 @@ func (ec *SMTP4DevLoginValidator) ValidateEmailLogin(ctx context.Context, email 
 				if err != nil {
 					continue
 				}
-				res, err := ec.HTTPClient.Post(link.String(), "text/plain", nil)
+				req, err := http.NewRequestWithContext(ctx, http.MethodPost, link.String(), nil)
+				if err != nil {
+					return fmt.Errorf("creating validation request: %w", err)
+				}
+				req.Header.Set("Content-Type", "text/plain")
+				res, err := ec.Clicker.Do(req)
 				if err != nil {
 					return fmt.Errorf("clicking validation link: %w", err)
 				}

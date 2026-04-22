@@ -98,9 +98,13 @@ func buildPiriService(node manifest.ResolvedPiriNode) ComposeService {
 	}
 
 	return ComposeService{
-		Image:      image,
-		User:       "0:0",
-		Ports:      []string{fmt.Sprintf("%d:3000", 15100+node.Index)},
+		Image: image,
+		User:  "0:0",
+		// Port is env-var interpolated for the same reason as the static
+		// compose files: pkg/stack's SDK test path sets SMELT_PIRI_N_PORT
+		// to "3000" so compose assigns an ephemeral host port and
+		// parallel test stacks don't collide on 15100+N.
+		Ports:      []string{fmt.Sprintf("${SMELT_PIRI_%d_PORT:-%d:3000}", node.Index, 15100+node.Index)},
 		Entrypoint: []string{"/entrypoint.sh"},
 		Volumes: []string{
 			fmt.Sprintf("%s-data:/data/piri", node.Name),
@@ -136,7 +140,7 @@ func buildPiriService(node manifest.ResolvedPiriNode) ComposeService {
 func buildPostgresService() ComposeService {
 	return ComposeService{
 		Image: "postgres:16-alpine",
-		Ports: []string{"5432:5432"},
+		Ports: []string{"${SMELT_PIRI_POSTGRES_PORT:-5432:5432}"},
 		Environment: []string{
 			"POSTGRES_USER=piri",
 			"POSTGRES_PASSWORD=piri",
@@ -187,7 +191,10 @@ func buildMinioService() ComposeService {
 	return ComposeService{
 		Image:   "minio/minio:latest",
 		Command: []string{"server", "/data", "--console-address", ":9001"},
-		Ports:   []string{"15072:9000", "15073:9001"},
+		Ports: []string{
+			"${SMELT_PIRI_MINIO_S3_PORT:-15072:9000}",
+			"${SMELT_PIRI_MINIO_CONSOLE_PORT:-15073:9001}",
+		},
 		Environment: []string{
 			"MINIO_ROOT_USER=minioadmin",
 			"MINIO_ROOT_PASSWORD=minioadmin",

@@ -109,9 +109,11 @@ func TestGeneratePiriComposeSingleNode(t *testing.T) {
 		t.Error("minio service should not be present for filesystem-only config")
 	}
 
-	// Should contain the correct port.
-	if !strings.Contains(yaml, "15100:3000") {
-		t.Error("expected port mapping 15100:3000")
+	// Port mapping is env-var interpolated so pkg/stack can override to
+	// ephemeral for parallel test stacks. Default substitution gives
+	// the fixed 15100:3000 binding for `make up`.
+	if !strings.Contains(yaml, "${SMELT_PIRI_0_PORT:-15100:3000}") {
+		t.Error("expected interpolated port mapping ${SMELT_PIRI_0_PORT:-15100:3000}")
 	}
 }
 
@@ -136,10 +138,14 @@ func TestGeneratePiriComposeMultiNode(t *testing.T) {
 		}
 	}
 
-	// Port mappings.
-	for _, port := range []string{"15100:3000", "15101:3000", "15102:3000"} {
-		if !strings.Contains(yaml, port) {
-			t.Errorf("expected port mapping %s", port)
+	// Port mappings (env-var interpolated so pkg/stack can override to ephemeral).
+	for i, want := range []string{
+		"${SMELT_PIRI_0_PORT:-15100:3000}",
+		"${SMELT_PIRI_1_PORT:-15101:3000}",
+		"${SMELT_PIRI_2_PORT:-15102:3000}",
+	} {
+		if !strings.Contains(yaml, want) {
+			t.Errorf("expected piri-%d port mapping %s", i, want)
 		}
 	}
 
