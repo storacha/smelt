@@ -196,6 +196,15 @@ func NewStack(ctx context.Context, t *testing.T, opts ...Option) (*Stack, error)
 	// down — otherwise it leaks containers into the developer's Docker.
 	// t.Cleanup runs whether the test passes, fails, or returns early.
 	t.Cleanup(func() {
+		// Dump container logs BEFORE teardown so CI has something to
+		// look at when a stack failed to come up. The subsequent
+		// stack.Close (or Ryuk, when the test process exits) removes
+		// the containers, and our workflow's post-run log-dump step
+		// finds nothing. Going through t.Log routes output into the
+		// test's own stream.
+		if t.Failed() {
+			dumpProjectLogs(t, projectName)
+		}
 		if cfg.keepOnFailure && t.Failed() {
 			t.Logf("smeltery: keeping stack running due to test failure (tempDir: %s)", tempDir)
 			return
