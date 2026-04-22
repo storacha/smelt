@@ -98,8 +98,8 @@ func buildPiriService(node manifest.ResolvedPiriNode) ComposeService {
 	}
 
 	return ComposeService{
-		Image:      image,
-		User:       "0:0",
+		Image: image,
+		User:  "0:0",
 		// Port is env-var interpolated for the same reason as the static
 		// compose files: pkg/stack's SDK test path sets SMELT_PIRI_N_PORT
 		// to "3000" so compose assigns an ephemeral host port and
