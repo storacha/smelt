@@ -32,9 +32,9 @@ services:
     depends_on:
       indexer:
         condition: service_healthy
-      dynamodb-local:
-        condition: service_healthy
       minio:
+        condition: service_healthy
+      postgres:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:80/health"]
@@ -46,3 +46,31 @@ services:
     restart: unless-stopped
     networks:
       - storacha-network
+
+  # Postgres for sprue's metadata stores. Sprue runs goose migrations on
+  # startup, so no init sidecar is needed — the `sprue` database created by
+  # POSTGRES_DB is enough. Separate from `piri-postgres` (which is generated
+  # from smelt.yml when piri nodes use db: postgres).
+  postgres:
+    image: postgres:16-alpine
+    ports:
+      - "${SMELT_UPLOAD_POSTGRES_PORT:-15061:5432}"
+    environment:
+      - POSTGRES_USER=sprue
+      - POSTGRES_PASSWORD=sprue
+      - POSTGRES_DB=sprue
+    volumes:
+      - upload-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sprue -d sprue"]
+      start_interval: 1s
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+    restart: unless-stopped
+    networks:
+      - storacha-network
+
+volumes:
+  upload-postgres-data:
