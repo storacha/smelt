@@ -1,15 +1,25 @@
 # Grafana Dashboard Provisioning
+#
+# `foldersFromFilesStructure: true` mirrors the on-disk directory tree
+# into Grafana folders. So `dashboards/piri/foo.json` lands in the
+# "piri" folder inside Grafana, `dashboards/upload/bar.json` in "upload",
+# and so on. Adding a new service is just `mkdir systems/telemetry/config/grafana/dashboards/<service>`.
+#
+# updateIntervalSeconds: 30 — dashboards on disk are rescanned every 30s,
+# so editing a JSON file and saving will hot-reload the dashboard in the
+# UI (browser refresh needed). UI edits are allowed (allowUiUpdates: true)
+# but the disk copy wins at the next rescan; run `make grafana-export` to
+# pull UI edits back to disk before they get overwritten.
 
 apiVersion: 1
 
 providers:
   - name: 'Smelt Dashboards'
     orgId: 1
-    folder: 'Smelt'
-    folderUid: smelt
     type: file
     disableDeletion: false
     updateIntervalSeconds: 30
     allowUiUpdates: true
     options:
       path: /etc/grafana/provisioning/dashboards
+      foldersFromFilesStructure: true

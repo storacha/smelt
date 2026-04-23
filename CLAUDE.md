@@ -297,6 +297,7 @@ All host-side ports live in a dedicated `15XXX` range to avoid collision with co
 | delegator | 15040 | HTTP/UCAN | Delegation issuance |
 | indexer | 15050 | HTTP/UCAN | Claims cache |
 | upload | 15060 | HTTP/UCAN | Upload coordination |
+| upload-postgres | 15061 | PostgreSQL | Sprue metadata store (`postgres` service in upload compose) |
 | minio S3 | 15070 | S3 | Shared object storage |
 | minio console | 15071 | HTTP | MinIO web console |
 | smtp | 15080 | SMTP | smtp4dev inbound |
@@ -306,6 +307,22 @@ All host-side ports live in a dedicated `15XXX` range to avoid collision with co
 | ipni p2p | 15092 | libp2p | Advertisement sync |
 | piri-{N} | 15100 + N | HTTP/UCAN | Storage node(s); N defined by `smelt.yml` (default 1, max 9) |
 | guppy | (none) | CLI | Client container |
+
+**Telemetry** (only emitted when the `telemetry` profile is active — `make up-telemetry`):
+
+| Service | Host Port | Protocol | Description |
+|---------|-----------|----------|-------------|
+| grafana | 15200 | HTTP | Grafana UI (anonymous admin) |
+| prometheus | 15201 | HTTP | Prometheus UI / query |
+| tempo HTTP | 15202 | HTTP | Tempo trace query API |
+| tempo gRPC | 15203 | gRPC | Tempo gRPC |
+| otel-collector OTLP gRPC | 15204 | gRPC | OTLP receiver |
+| otel-collector OTLP HTTP | 15205 | HTTP | OTLP receiver |
+| otel-collector metrics | 15206 | HTTP | Collector internal metrics |
+| otel-collector Prom exporter | 15207 | HTTP | Prometheus exporter |
+| loki | 15208 | HTTP | Loki push/query API |
+| alloy | 15209 | HTTP | Alloy UI / debug endpoint |
+| cadvisor | 15210 | HTTP | cAdvisor UI + Prometheus metrics |
 
 **Piri Shared Storage** (only emitted when at least one node uses that backend):
 
