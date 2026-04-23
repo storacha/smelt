@@ -1,0 +1,4 @@
+apiVersion: 1
+# Populated by `make grafana-export` after you create contact points in the UI.
+# Leaving it at just `apiVersion: 1` lets Grafana fall back to its built-in
+# default receiver; provisioning an empty-uid entry here would fail boot.

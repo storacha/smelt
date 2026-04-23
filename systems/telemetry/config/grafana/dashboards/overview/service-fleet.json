@@ -1,0 +1,132 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "links": [],
+  "liveNow": false,
+  "refresh": "15s",
+  "schemaVersion": 39,
+  "tags": ["smelt", "fleet", "cadvisor"],
+  "time": { "from": "now-30m", "to": "now" },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "Smelt Service Fleet",
+  "uid": "smelt-fleet",
+  "weekStart": "",
+  "templating": { "list": [] },
+  "panels": [
+    { "type": "row", "id": 1, "title": "Summary",
+      "collapsed": false, "gridPos": { "x": 0, "y": 0, "w": 24, "h": 1 }, "panels": [] },
+
+    { "type": "stat", "id": 10, "title": "Services Running",
+      "description": "Distinct compose services cAdvisor can see on this host.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "x": 0, "y": 1, "w": 6, "h": 4 },
+      "options": { "colorMode": "value", "graphMode": "none", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" },
+      "targets": [ { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "count(count by (container_label_com_docker_compose_service) (container_last_seen{container_label_com_docker_compose_project=\"smelt\"}))", "instant": true, "range": false, "queryType": "instant" } ],
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "blue", "value": null }] } }, "overrides": [] } },
+
+    { "type": "stat", "id": 11, "title": "Total CPU",
+      "description": "Sum of container CPU time rate across smelt services (cores).",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "x": 6, "y": 1, "w": 6, "h": 4 },
+      "options": { "colorMode": "value", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" },
+      "targets": [ { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum(rate(container_cpu_usage_seconds_total{container_label_com_docker_compose_project=\"smelt\"}[1m]))" } ],
+      "fieldConfig": { "defaults": { "decimals": 2, "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "orange", "value": 2 }, { "color": "red", "value": 8 }] } }, "overrides": [] } },
+
+    { "type": "stat", "id": 12, "title": "Total Memory",
+      "description": "Sum of working-set memory across smelt services.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "x": 12, "y": 1, "w": 6, "h": 4 },
+      "options": { "colorMode": "value", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" },
+      "targets": [ { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum(container_memory_working_set_bytes{container_label_com_docker_compose_project=\"smelt\"})" } ],
+      "fieldConfig": { "defaults": { "unit": "bytes", "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] } }, "overrides": [] } },
+
+    { "type": "stat", "id": 13, "title": "Network Throughput",
+      "description": "Combined RX + TX rate across smelt services.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "x": 18, "y": 1, "w": 6, "h": 4 },
+      "options": { "colorMode": "value", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" },
+      "targets": [ { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum(rate(container_network_receive_bytes_total{container_label_com_docker_compose_project=\"smelt\"}[1m])) + sum(rate(container_network_transmit_bytes_total{container_label_com_docker_compose_project=\"smelt\"}[1m]))" } ],
+      "fieldConfig": { "defaults": { "unit": "Bps", "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "blue", "value": null }] } }, "overrides": [] } },
+
+    { "type": "row", "id": 2, "title": "Fleet — one tile per service",
+      "collapsed": false, "gridPos": { "x": 0, "y": 5, "w": 24, "h": 1 }, "panels": [] },
+
+    { "type": "stat", "id": 20, "title": "",
+      "description": "Time since cAdvisor last saw each service (seconds). Green = alive, red = stale/dead.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "x": 0, "y": 6, "w": 24, "h": 10 },
+      "options": { "colorMode": "background", "graphMode": "none", "justifyMode": "center", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "value_and_name" },
+      "targets": [ { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "max by (container_label_com_docker_compose_service) (time() - container_last_seen{container_label_com_docker_compose_project=\"smelt\"})", "instant": true, "range": false, "queryType": "instant", "legendFormat": "{{container_label_com_docker_compose_service}}" } ],
+      "fieldConfig": { "defaults": { "unit": "s", "decimals": 0, "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "orange", "value": 30 }, { "color": "red", "value": 60 }] } }, "overrides": [] } },
+
+    { "type": "row", "id": 3, "title": "CPU & Memory by Service",
+      "collapsed": false, "gridPos": { "x": 0, "y": 16, "w": 24, "h": 1 }, "panels": [] },
+
+    { "type": "timeseries", "id": 30, "title": "CPU by Service",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "x": 0, "y": 17, "w": 12, "h": 8 },
+      "options": { "legend": { "displayMode": "table", "placement": "right", "showLegend": true, "calcs": ["mean", "max"] }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [ { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum by (container_label_com_docker_compose_service) (rate(container_cpu_usage_seconds_total{container_label_com_docker_compose_project=\"smelt\"}[1m]))", "legendFormat": "{{container_label_com_docker_compose_service}}" } ],
+      "fieldConfig": { "defaults": { "decimals": 3, "custom": { "drawStyle": "line", "lineInterpolation": "smooth", "lineWidth": 1, "fillOpacity": 10, "stacking": { "mode": "normal" } } }, "overrides": [] } },
+
+    { "type": "timeseries", "id": 31, "title": "Memory by Service",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "x": 12, "y": 17, "w": 12, "h": 8 },
+      "options": { "legend": { "displayMode": "table", "placement": "right", "showLegend": true, "calcs": ["mean", "max"] }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [ { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum by (container_label_com_docker_compose_service) (container_memory_working_set_bytes{container_label_com_docker_compose_project=\"smelt\"})", "legendFormat": "{{container_label_com_docker_compose_service}}" } ],
+      "fieldConfig": { "defaults": { "unit": "bytes", "custom": { "drawStyle": "line", "lineInterpolation": "smooth", "lineWidth": 1, "fillOpacity": 10, "stacking": { "mode": "normal" } } }, "overrides": [] } },
+
+    { "type": "row", "id": 4, "title": "Network by Service",
+      "collapsed": false, "gridPos": { "x": 0, "y": 25, "w": 24, "h": 1 }, "panels": [] },
+
+    { "type": "timeseries", "id": 40, "title": "Network RX by Service",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "x": 0, "y": 26, "w": 12, "h": 8 },
+      "options": { "legend": { "displayMode": "table", "placement": "right", "showLegend": true, "calcs": ["mean", "max"] }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [ { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum by (container_label_com_docker_compose_service) (rate(container_network_receive_bytes_total{container_label_com_docker_compose_project=\"smelt\"}[1m]))", "legendFormat": "{{container_label_com_docker_compose_service}}" } ],
+      "fieldConfig": { "defaults": { "unit": "Bps", "custom": { "drawStyle": "line", "lineInterpolation": "smooth", "lineWidth": 1, "fillOpacity": 10 } }, "overrides": [] } },
+
+    { "type": "timeseries", "id": 41, "title": "Network TX by Service",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "x": 12, "y": 26, "w": 12, "h": 8 },
+      "options": { "legend": { "displayMode": "table", "placement": "right", "showLegend": true, "calcs": ["mean", "max"] }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [ { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum by (container_label_com_docker_compose_service) (rate(container_network_transmit_bytes_total{container_label_com_docker_compose_project=\"smelt\"}[1m]))", "legendFormat": "{{container_label_com_docker_compose_service}}" } ],
+      "fieldConfig": { "defaults": { "unit": "Bps", "custom": { "drawStyle": "line", "lineInterpolation": "smooth", "lineWidth": 1, "fillOpacity": 10 } }, "overrides": [] } },
+
+    { "type": "row", "id": 5, "title": "Container Inventory",
+      "collapsed": false, "gridPos": { "x": 0, "y": 34, "w": 24, "h": 1 }, "panels": [] },
+
+    { "type": "table", "id": 50, "title": "Running Containers",
+      "description": "One row per container: compose service, full container name, image, seconds since last seen. Sorted by service name.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "x": 0, "y": 35, "w": 24, "h": 10 },
+      "options": { "cellHeight": "sm", "showHeader": true, "footer": { "show": false, "reducer": ["sum"], "fields": "" } },
+      "targets": [ { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "time() - container_last_seen{container_label_com_docker_compose_project=\"smelt\"}", "instant": true, "range": false, "queryType": "instant", "format": "table" } ],
+      "transformations": [
+        { "id": "organize",
+          "options": {
+            "excludeByName": { "Time": true, "__name__": true, "container_label_com_docker_compose_project": true, "id": true, "instance": true, "job": true },
+            "renameByName": {
+              "container_label_com_docker_compose_service": "service",
+              "name": "container",
+              "image": "image",
+              "Value": "age (s)"
+            },
+            "indexByName": {
+              "container_label_com_docker_compose_service": 0,
+              "name": 1,
+              "image": 2,
+              "Value": 3
+            }
+          }
+        },
+        { "id": "sortBy",
+          "options": { "fields": {}, "sort": [{ "field": "service", "desc": false }] }
+        }
+      ],
+      "fieldConfig": { "defaults": {}, "overrides": [ { "matcher": { "id": "byName", "options": "age (s)" }, "properties": [{ "id": "unit", "value": "s" }, { "id": "custom.cellOptions", "value": { "type": "color-background", "mode": "gradient" } }, { "id": "thresholds", "value": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "orange", "value": 30 }, { "color": "red", "value": 60 }] } }] } ] } }
+  ]
+}

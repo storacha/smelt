@@ -24,6 +24,10 @@ include:
   - path: generated/compose/piri.yml
   - path: systems/upload/compose.yml
   - path: systems/guppy/compose.yml
+  # Telemetry stack is gated behind the `telemetry` profile inside
+  # its compose file — `make up` leaves it off, `make up-telemetry`
+  # turns it on by setting COMPOSE_PROFILES=telemetry.
+  - path: systems/telemetry/compose.yml
 
 networks:
   storacha-network:

@@ -5,7 +5,6 @@
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 0,
-  "id": null,
   "links": [],
   "liveNow": false,
   "panels": [
@@ -72,7 +71,9 @@
         "justifyMode": "auto",
         "orientation": "auto",
         "reduceOptions": {
-          "calcs": ["lastNotNull"],
+          "calcs": [
+            "lastNotNull"
+          ],
           "fields": "",
           "values": false
         },
@@ -342,7 +343,9 @@
         "justifyMode": "auto",
         "orientation": "horizontal",
         "reduceOptions": {
-          "calcs": ["lastNotNull"],
+          "calcs": [
+            "lastNotNull"
+          ],
           "fields": "",
           "values": false
         },
@@ -599,7 +602,10 @@
   ],
   "refresh": "10s",
   "schemaVersion": 39,
-  "tags": ["smelt", "overview"],
+  "tags": [
+    "smelt",
+    "overview"
+  ],
   "templating": {
     "list": []
   },
@@ -611,6 +617,5 @@
   "timezone": "browser",
   "title": "Smelt Overview",
   "uid": "smelt-overview",
-  "version": 1,
   "weekStart": ""
 }
