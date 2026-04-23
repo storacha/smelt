@@ -47,6 +47,7 @@ func testModeEnv(nodes []manifest.ResolvedPiriNode) map[string]string {
 		"SMELT_IPNI_ADMIN_PORT":      "3002",
 		"SMELT_IPNI_P2P_PORT":        "3003",
 		"SMELT_UPLOAD_PORT":          "80",
+		"SMELT_UPLOAD_POSTGRES_PORT": "5432",
 
 		// Piri shared infra — only used when any node declares postgres/s3,
 		// but harmless to set unconditionally (compose ignores unknown
