@@ -1,0 +1,75 @@
+// Alloy config — tails logs from every container in the `smelt` compose
+// project via the Docker daemon API and forwards them to Loki.
+//
+// No filesystem bind-mount is needed; the daemon socket mount gives us
+// portable access on Linux and macOS Docker Desktop alike.
+
+// 1. Discover every container the local Docker daemon knows about.
+discovery.docker "smelt" {
+  host             = "unix:///var/run/docker.sock"
+  refresh_interval = "10s"
+}
+
+// 2. Filter down to containers in this compose project and project the
+//    useful compose metadata as Loki labels. Everything else is dropped.
+discovery.relabel "smelt" {
+  targets = discovery.docker.smelt.targets
+
+  // Keep only the `smelt` compose project (so if other docker-compose
+  // projects are running on the same host, we don't pick up their logs).
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_compose_project"]
+    regex         = "smelt"
+    action        = "keep"
+  }
+
+  // Don't ingest Alloy's own logs — closing a feedback loop with Loki's
+  // ingest-accepted lines feeding back into Alloy is a classic footgun.
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_compose_service"]
+    regex         = "alloy"
+    action        = "drop"
+  }
+
+  // compose service name → `service` label (the primary query dimension)
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_compose_service"]
+    target_label  = "service"
+  }
+
+  // container name → `container` label (distinguishes e.g. piri-0 / piri-1 / piri-2)
+  rule {
+    source_labels = ["__meta_docker_container_name"]
+    regex         = "/(.*)"
+    target_label  = "container"
+  }
+
+  // image (with tag) — useful when debugging "did this run pick up the new build?"
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_compose_image"]
+    target_label  = "image"
+  }
+}
+
+// 3. Stream logs from each discovered target via the Docker log API.
+loki.source.docker "smelt" {
+  host             = "unix:///var/run/docker.sock"
+  targets          = discovery.relabel.smelt.output
+  refresh_interval = "10s"
+  labels = {
+    source = "docker",
+  }
+  forward_to = [loki.write.default.receiver]
+}
+
+// 4. Ship to Loki. Loki is reachable over the storacha-network as `loki:3100`.
+loki.write "default" {
+  endpoint {
+    url = "http://loki:3100/loki/api/v1/push"
+  }
+  // Batch tuned for dev-scale volume. For higher throughput, raise
+  // batch_size and drop batch_wait, or shard by tenant.
+  external_labels = {
+    cluster = "smelt",
+  }
+}

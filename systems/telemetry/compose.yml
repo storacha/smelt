@@ -16,10 +16,10 @@ services:
     image: otel/opentelemetry-collector-contrib:0.96.0
     profiles: ["telemetry"]
     ports:
-      - "4317:4317"   # OTLP gRPC receiver
-      - "4318:4318"   # OTLP HTTP receiver
-      - "8888:8888"   # Collector internal metrics
-      - "8889:8889"   # Prometheus exporter
+      - "15204:4317"   # OTLP gRPC receiver
+      - "15205:4318"   # OTLP HTTP receiver
+      - "15206:8888"   # Collector internal metrics
+      - "15207:8889"   # Prometheus exporter
     volumes:
       - ./config/otel-collector.yaml:/etc/otelcol-contrib/config.yaml:ro
     command: ["--config=/etc/otelcol-contrib/config.yaml"]
@@ -34,7 +34,7 @@ services:
     image: prom/prometheus:v2.50.1
     profiles: ["telemetry"]
     ports:
-      - "9090:9090"
+      - "15201:9090"
     volumes:
       - ./config/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus-data:/prometheus
@@ -54,11 +54,11 @@ services:
 
   # Tempo - Distributed tracing
   tempo:
-    image: grafana/tempo:2.4.0
+    image: grafana/tempo:2.6.0
     profiles: ["telemetry"]
     ports:
-      - "3200:3200"   # Tempo HTTP API
-      - "9095:9095"   # gRPC
+      - "15202:3200"   # Tempo HTTP API
+      - "15203:9095"   # gRPC
     volumes:
       - ./config/tempo.yaml:/etc/tempo/tempo.yaml:ro
       - tempo-data:/var/tempo
@@ -72,12 +72,96 @@ services:
     networks:
       - storacha-network
 
-  # Grafana - Visualization
-  grafana:
-    image: grafana/grafana:10.4.1
+  # cAdvisor - per-container resource metrics (CPU, memory, network, disk,
+  # last-seen). Auto-discovers every container on the local Docker daemon,
+  # exposes /metrics for Prometheus. Gives the "shape of the stack" view —
+  # what's running, whether it's alive, and how heavy it's breathing.
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.49.2
     profiles: ["telemetry"]
     ports:
-      - "3001:3000"
+      - "15210:8080"
+    # Mount set is the Docker Desktop-safe subset. `/var/lib/docker` is
+    # intentionally omitted — it's flaky on Docker Desktop and cAdvisor
+    # gets enough from the Docker socket + /sys + cgroups.
+    volumes:
+      - /:/rootfs:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /sys:/sys:ro
+    # Required on most Linux hosts to read cgroup info; harmless on Docker
+    # Desktop where the VM already has full privileges.
+    privileged: true
+    devices:
+      - /dev/kmsg:/dev/kmsg
+    command:
+      # docker_only limits discovery to Docker-managed cgroups (skips
+      # system.slice and other host processes — irrelevant in a dev stack).
+      - "--docker_only=true"
+      # Whitelist only the compose labels we actually query on; other
+      # docker labels (build metadata, image tags) balloon Prometheus
+      # cardinality without adding signal.
+      - "--store_container_labels=false"
+      - "--whitelisted_container_labels=com.docker.compose.project,com.docker.compose.service"
+      # Disable event storage — we're not using the internal UI's event log.
+      - "--disable_metrics=disk,referenced_memory,cpu_topology,process,hugetlb,tcp,udp,advtcp,resctrl,sched"
+    restart: unless-stopped
+    networks:
+      - storacha-network
+
+  # Loki - Log aggregation
+  loki:
+    image: grafana/loki:3.3.2
+    profiles: ["telemetry"]
+    ports:
+      - "15208:3100"
+    volumes:
+      - ./config/loki/loki.yaml:/etc/loki/local-config.yaml:ro
+      - loki-data:/loki
+    command: ["-config.file=/etc/loki/local-config.yaml"]
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3100/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - storacha-network
+
+  # Alloy - Log collector (tails Docker daemon log stream via the socket)
+  alloy:
+    image: grafana/alloy:v1.5.1
+    profiles: ["telemetry"]
+    ports:
+      - "15209:12345"
+    volumes:
+      - ./config/alloy/config.alloy:/etc/alloy/config.alloy:ro
+      # Docker socket: Alloy uses the daemon API to stream logs per-container.
+      # Portable across Linux and macOS Docker Desktop (both expose the socket
+      # at /var/run/docker.sock). On Linux this path is root/docker-group
+      # owned, so Alloy runs as root inside the container.
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    command:
+      - "run"
+      - "--server.http.listen-addr=0.0.0.0:12345"
+      - "--storage.path=/var/lib/alloy/data"
+      - "/etc/alloy/config.alloy"
+    user: "0:0"
+    depends_on:
+      loki:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - storacha-network
+
+  # Grafana - Visualization
+  grafana:
+    # Pinned to 12.0.0: 13.0.1 on Docker Hub ships a pre-release postgres
+    # plugin (module.js?_cache=13.0.0-pre) that fails to load with a
+    # React Suspense chunk error. Revisit once 13.x is stable.
+    image: grafana/grafana:12.0.0
+    profiles: ["telemetry"]
+    ports:
+      - "15200:3000"
     environment:
       - GF_AUTH_ANONYMOUS_ENABLED=true
       - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
@@ -86,11 +170,14 @@ services:
     volumes:
       - ./config/grafana/datasources.yaml:/etc/grafana/provisioning/datasources/datasources.yaml:ro
       - ./config/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./config/grafana/alerting:/etc/grafana/provisioning/alerting:ro
       - grafana-data:/var/lib/grafana
     depends_on:
       prometheus:
         condition: service_healthy
       tempo:
+        condition: service_healthy
+      loki:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/api/health"]
@@ -100,8 +187,23 @@ services:
     restart: unless-stopped
     networks:
       - storacha-network
+      # piri-storage-net is where the generator places piri-postgres and
+      # piri-minio (kept isolated from the main network as implementation
+      # detail of the piri fleet). Grafana joins it read-only so it can
+      # reach piri-postgres:5432 for per-node dashboards. If no piri node
+      # uses postgres or s3, this net still exists but is empty and
+      # harmless.
+      - piri-storage-net
+
+networks:
+  # piri-storage-net is declared by the generated piri compose when any
+  # piri node uses postgres or s3. Declaring it here too lets grafana
+  # attach without coupling telemetry bring-up to the piri topology.
+  # Compose merges the two declarations into a single project-scoped net.
+  piri-storage-net:
 
 volumes:
   prometheus-data:
   tempo-data:
   grafana-data:
+  loki-data:

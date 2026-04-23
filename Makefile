@@ -4,7 +4,7 @@ DOCKER := $(shell which docker)
 # Set YES=1 to skip confirmation prompts (e.g., make nuke YES=1)
 YES ?= 0
 
-.PHONY: help generate init up down restart clean nuke fresh logs pull build status guppy regen debug-upload ensure-state check-docker
+.PHONY: help generate init up up-telemetry down restart clean nuke fresh logs pull build status guppy regen debug-upload ensure-state check-docker grafana grafana-export
 
 # Default target - show help
 help:
@@ -46,6 +46,11 @@ help:
 	@echo ""
 	@echo "Debugging:"
 	@echo "  make debug-upload  Run upload (sprue) under Delve on localhost:2345"
+	@echo ""
+	@echo "Telemetry (Grafana / Prometheus / Tempo / OTEL Collector):"
+	@echo "  make up-telemetry     Start all services WITH the telemetry stack"
+	@echo "  make grafana          Open Grafana (http://localhost:15200)"
+	@echo "  make grafana-export   Dump Grafana dashboards + alerts to config/ for git commit"
 	@echo ""
 	@echo "Options:"
 	@echo "  YES=1              Skip confirmation prompts (e.g., make nuke YES=1)"
@@ -127,9 +132,41 @@ up: ensure-state
 	@echo "Services starting. Run 'make status' to check health."
 	@echo "Run 'make logs' to follow logs."
 
-# Stop all services (keeps volumes for quick restart)
+# Start all services WITH the telemetry stack. The telemetry services
+# (Grafana / Prometheus / Tempo / OTEL Collector) are gated behind the
+# `telemetry` compose profile, so we opt in via COMPOSE_PROFILES.
+# OTEL_ENABLED / OTEL_ENDPOINT are consumed by per-service compose files
+# (e.g. systems/indexing/ipni/compose.yml) that can emit telemetry when
+# the collector is reachable.
+up-telemetry:
+	@COMPOSE_PROFILES=telemetry \
+	 OTEL_ENABLED=true \
+	 OTEL_ENDPOINT=http://otel-collector:4318 \
+	 $(MAKE) up
+	@echo ""
+	@echo "Telemetry stack started:"
+	@echo "  Grafana UI    http://localhost:15200"
+	@echo "  Prometheus UI http://localhost:15201"
+	@echo "  Tempo API     http://localhost:15202"
+
+# Open the Grafana UI in the default browser (best-effort; prints URL otherwise)
+grafana:
+	@url=http://localhost:15200; \
+	if command -v xdg-open >/dev/null 2>&1; then xdg-open "$$url" >/dev/null 2>&1; \
+	elif command -v open >/dev/null 2>&1; then open "$$url"; \
+	else echo "Open $$url in your browser"; fi
+
+# Export dashboards + unified-alerting config from the running Grafana back
+# to systems/telemetry/config/grafana/ so the result can be committed to git.
+# Requires the telemetry stack to be running (make up-telemetry).
+grafana-export:
+	@./systems/telemetry/scripts/grafana-export.sh
+
+# Stop all services (keeps volumes for quick restart).
+# `--profile "*"` includes profile-gated services (telemetry) that would
+# otherwise be considered inactive and skipped by `down`.
 down: generated/compose/piri.yml ensure-state
-	$(DOCKER) compose down --remove-orphans
+	$(DOCKER) compose --profile '*' down --remove-orphans
 	@echo ""
 	@echo "Services stopped. Data preserved in volumes."
 	@echo "Run 'make up' to restart."
@@ -150,8 +187,9 @@ endef
 # Stop services and remove volumes (but keep keys/proofs)
 clean: generated/compose/piri.yml check-docker
 	$(call confirm,STOP all services and DELETE all volumes (Redis cache$(,) IPNI data$(,) etc.))
-	@# Stop all services including those with profiles
-	$(DOCKER) compose down -v --remove-orphans
+	@# `--profile "*"` catches profile-gated services (telemetry) that
+	@# `down` alone would skip.
+	$(DOCKER) compose --profile '*' down -v --remove-orphans
 	@# Also remove any dangling volumes from this project
 	$(DOCKER) volume ls -q --filter "name=smelt_" | xargs -r $(DOCKER) volume rm 2>/dev/null || true
 	@# Clear chain state so next `make up` cold-boots from the committed baseline.
@@ -167,8 +205,9 @@ clean: generated/compose/piri.yml check-docker
 nuke: generated/compose/piri.yml check-docker
 	$(call confirm,DELETE everything: containers$(,) volumes$(,) keys$(,) proofs$(,) AND Docker images)
 	@echo "Removing all containers, volumes, keys, proofs, and images..."
-	@# Stop all services including those with profiles
-	$(DOCKER) compose down -v --remove-orphans --rmi local 2>/dev/null || true
+	@# `--profile "*"` catches profile-gated services (telemetry) that
+	@# `down` alone would skip.
+	$(DOCKER) compose --profile '*' down -v --remove-orphans --rmi local 2>/dev/null || true
 	@# Also remove any dangling volumes from this project
 	$(DOCKER) volume ls -q --filter "name=smelt_" | xargs -r $(DOCKER) volume rm 2>/dev/null || true
 	rm -rf generated/keys generated/proofs generated/compose
@@ -181,8 +220,9 @@ nuke: generated/compose/piri.yml check-docker
 fresh: generated/compose/piri.yml check-docker
 	$(call confirm,DELETE everything and rebuild from scratch)
 	@echo "Removing all containers, volumes, keys, proofs, and images..."
-	@# Stop all services including those with profiles
-	$(DOCKER) compose down -v --remove-orphans --rmi local 2>/dev/null || true
+	@# `--profile "*"` catches profile-gated services (telemetry) that
+	@# `down` alone would skip.
+	$(DOCKER) compose --profile '*' down -v --remove-orphans --rmi local 2>/dev/null || true
 	@# Also remove any dangling volumes from this project
 	$(DOCKER) volume ls -q --filter "name=smelt_" | xargs -r $(DOCKER) volume rm 2>/dev/null || true
 	rm -rf generated/keys generated/proofs generated/compose

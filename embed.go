@@ -36,6 +36,13 @@ import "embed"
 //go:embed systems/upload/config/*
 //go:embed systems/upload/post_start.sh
 
+// Telemetry is included at the compose root under a profile gate, so the
+// file must exist on disk even when tests don't activate the `telemetry`
+// profile. `all:` prefix pulls in dot-files (e.g. .gitkeep placeholders
+// that keep empty subdirs present for the provisioner).
+//go:embed systems/telemetry/compose.yml
+//go:embed all:systems/telemetry/config
+
 // Curated snapshots shipped with the Go module so external consumers
 // (importers of pkg/stack) can call stack.WithEmbeddedSnapshot without
 // knowing anything about smelt's on-disk layout. New directories
