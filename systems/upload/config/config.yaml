@@ -25,29 +25,20 @@ mailer:
   smtp_auth_user: "upload"
   smtp_auth_secret: "secret"
 
-dynamodb:
-  endpoint: "http://dynamodb-local:8000"
-  region: "us-west-1"
-  agent_index_table: "agent-index"
-  blob_registry_table: "blob-registry"
-  consumer_table: "consumer"
-  customer_table: "customer"
-  delegation_table: "delegation"
-  space_metrics_table: "space-metrics"
-  admin_metrics_table: "admin-metrics"
-  replica_table: "replica"
-  revocation_table: "revocation"
-  storage_provider_table: "storage-provider"
-  subscription_table: "subscription"
-  space_diff_table: "space-diff"
-  upload_table: "upload"
+storage:
+  type: "postgres"
 
-s3:
-  endpoint: "http://minio:9000"
-  region: "us-west-1"
-  agent_message_bucket: "agent-message"
-  delegation_bucket: "delegation"
-  upload_shards_bucket: "upload-shards"
+  postgres:
+    dsn: "postgres://sprue:sprue@postgres:5432/sprue?sslmode=disable"
+    max_conns: 10
+    min_conns: 0
+
+  s3:
+    endpoint: "http://minio:9000"
+    region: "us-west-1"
+    agent_message_bucket: "agent-message"
+    delegation_bucket: "delegation"
+    upload_shards_bucket: "upload-shards"
 
 log:
   level: "info"
