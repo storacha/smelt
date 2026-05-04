@@ -267,6 +267,18 @@ func NewStack(ctx context.Context, t *testing.T, opts ...Option) (*Stack, error)
 // MustNewStack creates and starts a network, calling t.Fatal on error.
 func MustNewStack(t *testing.T, opts ...Option) *Stack {
 	t.Helper()
+
+	// These are all read by Docker Compose files. Read them here so that the test
+	// runner pays attention to them when caching results.
+	_ = os.Getenv("PIRI_IMAGE")
+	_ = os.Getenv("GUPPY_IMAGE")
+	_ = os.Getenv("DELEGATOR_IMAGE")
+	_ = os.Getenv("INDEXER_IMAGE")
+	_ = os.Getenv("IPNI_IMAGE")
+	_ = os.Getenv("SIGNER_IMAGE")
+	_ = os.Getenv("UPLOAD_IMAGE")
+	_ = os.Getenv("BLOCKCHAIN_IMAGE")
+
 	stack, err := NewStack(context.Background(), t, opts...)
 	if err != nil {
 		t.Fatalf("smeltery: failed to create stack: %v", err)
