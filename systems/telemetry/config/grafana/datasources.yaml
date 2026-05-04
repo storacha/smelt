@@ -30,3 +30,91 @@ datasources:
         datasourceUid: prometheus
       nodeGraph:
         enabled: true
+      tracesToLogsV2:
+        datasourceUid: loki
+        spanStartTimeShift: '-1h'
+        spanEndTimeShift: '1h'
+        tags:
+          - key: service.name
+            value: service
+
+  # Loki — logs from every smelt container (shipped by Alloy via docker socket).
+  # derivedFields matches `trace_id=<hex>` in log lines and turns it into a
+  # clickable link that jumps to the matching trace in Tempo. Piri and sprue
+  # both emit structured logs with trace_id when OTLP tracing is enabled.
+  - name: Loki
+    type: loki
+    uid: loki
+    access: proxy
+    url: http://loki:3100
+    jsonData:
+      maxLines: 1000
+      derivedFields:
+        - name: TraceID
+          matcherRegex: 'trace_id[=:]"?([a-f0-9]{16,32})'
+          datasourceUid: tempo
+          url: '$${__value.raw}'
+          urlDisplayLabel: 'View trace'
+
+  # Sprue's postgres (upload service metadata store).
+  # Reached via Docker DNS inside storacha-network — Grafana uses the
+  # internal port 5432, not the host-side 15061 mapping.
+  - name: Sprue Postgres
+    type: postgres
+    uid: sprue-postgres
+    access: proxy
+    url: postgres:5432
+    user: sprue
+    database: sprue
+    secureJsonData:
+      password: sprue
+    jsonData:
+      sslmode: disable
+      postgresVersion: 1600
+      timescaledb: false
+
+  # Piri node postgres databases — one datasource per piri_N so dashboards
+  # can switch between nodes via a $DS variable. All three share one
+  # piri-postgres instance (DNS name `piri-postgres`, container port 5432);
+  # only the database name differs. piri-0 is the template-loaded default.
+  - name: Piri 0
+    type: postgres
+    uid: piri-0
+    access: proxy
+    url: piri-postgres:5432
+    user: piri
+    database: piri_0
+    secureJsonData:
+      password: piri
+    jsonData:
+      sslmode: disable
+      postgresVersion: 1600
+      timescaledb: false
+
+  - name: Piri 1
+    type: postgres
+    uid: piri-1
+    access: proxy
+    url: piri-postgres:5432
+    user: piri
+    database: piri_1
+    secureJsonData:
+      password: piri
+    jsonData:
+      sslmode: disable
+      postgresVersion: 1600
+      timescaledb: false
+
+  - name: Piri 2
+    type: postgres
+    uid: piri-2
+    access: proxy
+    url: piri-postgres:5432
+    user: piri
+    database: piri_2
+    secureJsonData:
+      password: piri
+    jsonData:
+      sslmode: disable
+      postgresVersion: 1600
+      timescaledb: false

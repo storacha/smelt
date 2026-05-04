@@ -1,0 +1,3 @@
+apiVersion: 1
+# Populated by `make grafana-export` after you define notification policies
+# in the UI. Empty = Grafana uses its built-in default route.

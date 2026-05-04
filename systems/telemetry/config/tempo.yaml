@@ -41,3 +41,36 @@ metrics_generator:
     remote_write:
       - url: http://prometheus:9090/api/v1/write
         send_exemplars: true
+  processor:
+    # service_graphs produces Prometheus metrics for each service→service
+    # call observed in incoming traces. Grafana's Node Graph in the Tempo
+    # datasource reads these metrics to draw the live topology.
+    service_graphs:
+      # 10k nodes+edges is ample for a single dev stack.
+      max_items: 10000
+      # Treat client-side spans as outbound calls to their peer.service.
+      # Without this, only server-received spans create edges.
+      dimensions: []
+
+    # local_blocks buffers recent spans in-memory so TraceQL metrics
+    # queries (the `| rate()` pipe, used by Grafana's Service Graph tab
+    # and TraceQL Metrics view) can serve live data. Without it Tempo
+    # returns "localblocks processor not found" for the recent window.
+    # Older blocks still come from storage; local_blocks only covers
+    # the most recent few minutes.
+    local_blocks:
+      # Buffer client spans too, not just server-received spans.
+      # Default (true) drops client-only services from `| rate()` results.
+      filter_server_spans: false
+      # Persist buffered blocks to Tempo storage so historical TraceQL
+      # queries can still reach them after the in-memory window expires.
+      flush_to_storage: true
+
+# Per-tenant opt-in: the metrics-generator only runs processors that are
+# enabled here. Tempo defaults every processor off for safety.
+overrides:
+  defaults:
+    metrics_generator:
+      processors:
+        - service-graphs
+        - local-blocks
