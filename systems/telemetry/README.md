@@ -32,26 +32,26 @@ Container-internal ports are unchanged (Grafana listens on 3000, Prometheus on 9
 ## Architecture
 
 ```
-Services (piri, ipni, upload, ...)         Docker daemon
-         │                                       │
-     ┌───┴──┐                         ┌──────────┴──────────┐
-     │ OTLP │                         │ stdout/stderr       │
-     ▼      ▼                         ▼                     ▼
-  ┌───────────────┐              ┌────────┐          ┌───────────┐
-  │OTEL Collector │              │ Alloy  │          │ cAdvisor  │
-  └───────────────┘              └────────┘          └───────────┘
-     │        │                       │                     │
-  ┌──┴──┐   ┌─┴───┐                   │                     │
-  ▼     ▼   ▼     ▼                   ▼                     │
-┌──────┐ ┌─────┐                   ┌──────┐                 │
-│Prom. │ │Tempo│                   │ Loki │                 │
-└──────┘ └─────┘                   └──────┘                 │
-  ▲ ▲                                   │                   │
-  │ └───────────────────────────────────┼───────────────────┘
-  │  (cAdvisor is scraped by Prom,      │
-  │   not routed through the collector)
-  │                                     │
-  └──────┬──────────────────────────────┘
+Services (piri, ipni, upload, ...)           Docker daemon
+          │                                          │
+      ┌───┴───┐                           ┌──────────┴──────────┐
+      │ OTLP  │                           │ stdout/stderr       │
+      ▼       ▼                           ▼                     ▼
+  ┌────────────────┐                  ┌───────┐           ┌──────────┐
+  │ OTEL Collector │                  │ Alloy │           │ cAdvisor │
+  └────────────────┘                  └───────┘           └──────────┘
+     │         │                          │                     │
+  ┌──┴──┐   ┌──┴──┐                       │                     │
+  ▼     ▼   ▼     ▼                       ▼                     │
+ ┌───────┐  ┌─────┐                   ┌───────┐                 │
+ │ Prom. │  │Tempo│                   │ Loki  │                 │
+ └───────┘  └─────┘                   └───────┘                 │
+  ▲ ▲                                     │                     │
+  │ └─────────────────────────────────────┼─────────────────────┘
+  │  (cAdvisor is scraped by Prom,        │
+  │   not routed through the collector)   │
+  │                                       │
+  └──────┬────────────────────────────────┘
          ▼
    ┌─────────┐
    │ Grafana │
