@@ -2,6 +2,7 @@ package guppy
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"regexp"
@@ -143,6 +144,28 @@ func (c *ContainerClient) GenerateSpace(ctx context.Context) (string, error) {
 	return spaceDID, nil
 }
 
+type SpaceInfo struct {
+	DID       string   `json:"Did"`
+	Providers []string `json:"Providers"`
+}
+
+// GetSpaceInfo retrieves information about a space, such as its DID and providers.
+func (c *ContainerClient) GetSpaceInfo(ctx context.Context, spaceDID string) (SpaceInfo, error) {
+	stdout, _, err := c.guppyExec(ctx, "space", "info", "--json", spaceDID)
+	if err != nil {
+		return SpaceInfo{}, err
+	}
+	// eg:
+	// `{"Did":"did:key:z6MktcYr3yVnxCsGA2KLsNVu51ctawocuDeeXVzaYc2Da4RM","Providers":["did:web:up.forge.storacha.network"]}`
+	var info SpaceInfo
+	err = json.Unmarshal([]byte(stdout), &info)
+	if err != nil {
+		return SpaceInfo{}, fmt.Errorf("parse space info: %w", err)
+	}
+
+	return info, nil
+}
+
 // AddSource adds a source directory to a space.
 func (c *ContainerClient) AddSource(ctx context.Context, spaceDID, path string) error {
 	_, _, err := c.guppyExec(ctx, "upload", "source", "add", spaceDID, path)
@@ -150,7 +173,7 @@ func (c *ContainerClient) AddSource(ctx context.Context, spaceDID, path string) 
 }
 
 // Upload uploads all sources in a space and returns the CIDs.
-func (c *ContainerClient) Upload(ctx context.Context, spaceDID string, options ...UploadOption) ([]string, error) {
+func (c *ContainerClient) Upload(ctx context.Context, spaceDID string, options ...UploadOption) ([]UploadInfo, error) {
 	config := &uploadConfig{}
 	for _, option := range options {
 		option(config)
@@ -166,7 +189,7 @@ func (c *ContainerClient) Upload(ctx context.Context, spaceDID string, options .
 	if err != nil {
 		return nil, err
 	}
-	return extractCIDs(stdout), nil
+	return extractUploads(stdout), nil
 }
 
 // Retrieve downloads content by CID to a destination path.
@@ -175,14 +198,50 @@ func (c *ContainerClient) Retrieve(ctx context.Context, spaceDID, cid, destPath 
 	return err
 }
 
+// generateTestDataConfig holds optional configuration for GenerateTestData.
+type generateTestDataConfig struct {
+	MinFileSize string
+	MaxFileSize string
+}
+
+// GenerateTestDataOption configures optional parameters for GenerateTestData.
+type GenerateTestDataOption func(*generateTestDataConfig)
+
+// WithMinFileSize sets the --min-file-size flag for randdir.
+func WithMinFileSize(size string) GenerateTestDataOption {
+	return func(c *generateTestDataConfig) {
+		c.MinFileSize = size
+	}
+}
+
+// WithMaxFileSize sets the --max-file-size flag for randdir.
+func WithMaxFileSize(size string) GenerateTestDataOption {
+	return func(c *generateTestDataConfig) {
+		c.MaxFileSize = size
+	}
+}
+
 // GenerateTestData creates random test data inside the guppy container using randdir.
 // Returns the path to the generated data directory within the container.
-func (c *ContainerClient) GenerateTestData(ctx context.Context, size string) (string, error) {
+func (c *ContainerClient) GenerateTestData(ctx context.Context, size string, opts ...GenerateTestDataOption) (string, error) {
+	var cfg generateTestDataConfig
+	for _, opt := range opts {
+		opt(&cfg)
+	}
+
 	// Generate unique directory name
 	path := fmt.Sprintf("/tmp/testdata-%d", time.Now().UnixNano())
 
+	args := []string{"randdir", "--size", size, "--output", path}
+	if cfg.MinFileSize != "" {
+		args = append(args, "--min-file-size", cfg.MinFileSize)
+	}
+	if cfg.MaxFileSize != "" {
+		args = append(args, "--max-file-size", cfg.MaxFileSize)
+	}
+
 	// Use randdir to generate test data inside the container
-	_, _, err := c.exec(ctx, "randdir", "--size", size, "--output", path)
+	_, _, err := c.exec(ctx, args...)
 	if err != nil {
 		return "", fmt.Errorf("generate test data: %w", err)
 	}
@@ -196,8 +255,23 @@ func extractDID(text string) string {
 	return re.FindString(text)
 }
 
-// extractCIDs extracts CIDs (bafy...) from text.
-func extractCIDs(text string) []string {
-	re := regexp.MustCompile(`bafy[a-zA-Z0-9]+`)
-	return re.FindAllString(text, -1)
+type UploadInfo struct {
+	CID        string
+	SourceName string
+}
+
+// extractUploads extracts CIDs (bafy...) from text.
+func extractUploads(text string) []UploadInfo {
+	re := regexp.MustCompile(`(bafy[a-zA-Z0-9]+) \(source: (.+)\)`)
+	matches := re.FindAllStringSubmatch(text, -1)
+	var uploads []UploadInfo
+	for _, match := range matches {
+		if len(match) == 3 {
+			uploads = append(uploads, UploadInfo{
+				CID:        match[1],
+				SourceName: match[2],
+			})
+		}
+	}
+	return uploads
 }
