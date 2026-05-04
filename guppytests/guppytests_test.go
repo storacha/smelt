@@ -1,6 +1,7 @@
 package guppytests
 
 import (
+	"os"
 	"testing"
 
 	"github.com/storacha/smelt/pkg/clients/guppy"
@@ -10,10 +11,13 @@ import (
 
 func TestGuppy(t *testing.T) {
 	ctx := t.Context()
-	stack := stack.MustNewStack(
-		t,
+	opts := []stack.Option{
 		stack.WithGuppyImage("ghcr.io/storacha/guppy:main-dev"),
-	)
+	}
+	if os.Getenv("CI") == "" {
+		opts = append(opts, stack.WithEmbeddedSnapshot("3-piri-filesystem-sqlite"))
+	}
+	stack := stack.MustNewStack(t, opts...)
 	client, err := guppy.NewContainerClient(stack)
 	require.NoError(t, err)
 
